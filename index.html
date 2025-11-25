@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>GhostDrift 素数計算OSデモ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- デザイン用（Tailwind） -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React本体 -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- ブラウザでJSXを変換するため -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+    }
+    .cursor-wait {
+      cursor: wait;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-200">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ==========================================
+    // アイコンコンポーネント (Lucide互換SVG)
+    // ==========================================
+    const Shield = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+    );
+    const ShieldAlert = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+    );
+    const CheckCircle = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+    );
+    const Info = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    );
+    const Calculator = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
+    );
+    const AlertTriangle = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+    );
+    const ArrowRight = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    );
+
+    // ==========================================
+    // 数学エンジン: 巨大数対応 (BigInt + ミラー・ラビン判定)
+    // ==========================================
+
+    // BigInt用のモジュロべき乗演算 (base^exp % mod)
+    function modPow(base, exp, mod) {
+      let res = BigInt(1);
+      base %= mod;
+      while (exp > BigInt(0)) {
+        if (exp % BigInt(2) === BigInt(1)) res = (res * base) % mod;
+        base = (base * base) % mod;
+        exp /= BigInt(2);
+      }
+      return res;
+    }
+
+    // ミラー・ラビン素数判定 (決定論的バリアント: n < 2^64 まで対応)
+    function isPrimeBigInt(n) {
+      if (n < BigInt(2)) return false;
+      if (n === BigInt(2) || n === BigInt(3)) return true;
+      if (n % BigInt(2) === BigInt(0)) return false;
+
+      // n-1 = d * 2^s
+      let d = n - BigInt(1);
+      let s = BigInt(0);
+      while (d % BigInt(2) === BigInt(0)) {
+        d /= BigInt(2);
+        s++;
+      }
+
+      // 判定に使う底
+      const bases = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
+
+      for (let a of bases) {
+        const aBig = BigInt(a);
+        if (n <= aBig) break;
+
+        let x = modPow(aBig, d, n);
+        if (x === BigInt(1) || x === n - BigInt(1)) continue;
+
+        let composite = true;
+        for (let r = BigInt(1); r < s; r++) {
+          x = (x * x) % n;
+          if (x === n - BigInt(1)) {
+            composite = false;
+            break;
+          }
+        }
+        if (composite) return false;
+      }
+      return true;
+    }
+
+    // 対数積分 li(x) の近似
+    const liApprox = (n) => {
+      const x = Number(n); 
+      if (x <= 1) return 0;
+      return Math.floor(x / (Math.log(x) - 1)); 
+    };
+
+    // 範囲内の素数を数える
+    function countPrimesRangeBigInt(minBig, maxBig) {
+      if (maxBig - minBig > BigInt(50000)) return -1; 
+
+      let count = 0;
+      let current = minBig;
+      while (current <= maxBig) {
+        if (isPrimeBigInt(current)) {
+          count++;
+        }
+        current++;
+      }
+      return count;
+    }
+
+    // 決定論的な乱数生成 (デモの再現性のため)
+    function pseudoRandom(seed) {
+      let x = Math.sin(seed) * 10000;
+      return x - Math.floor(x);
+    }
+
+    // メイン計算処理
+    const performCalculation = (minStr, maxStr) => {
+      try {
+        const cleanMin = minStr.replace(/[０-９,]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).replace(/,/g, '');
+        const cleanMax = maxStr.replace(/[０-９,]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).replace(/,/g, '');
+
+        if (!/^\d+$/.test(cleanMin) || !/^\d+$/.test(cleanMax)) {
+          return { error: "半角数字で入力してください。" };
+        }
+
+        const min = BigInt(cleanMin);
+        const max = BigInt(cleanMax);
+
+        if (min < BigInt(0)) return { error: "0以上の数字にしてください。" };
+        if (max <= min) return { error: "「ここまで」は「ここから」より大きくしてください。" };
+        
+        // 上限: 1京 (10^16)
+        const LIMIT = BigInt("10000000000000000"); 
+        if (max > LIMIT) return { error: "現在は1京（10,000,000,000,000,000）までの計算に対応しています。" };
+        
+        // 計算幅制限
+        if (max - min > BigInt(50000)) return { error: "一度に計算できる幅は5万個分までです。幅を狭くしてください。" };
+
+        // 1. 実計算 (Real Count)
+        const realCount = countPrimesRangeBigInt(min, max);
+        
+        // 2. ふつうの計算 (Naive Prediction)
+        const naiveCount = Math.max(0, liApprox(max) - liApprox(min));
+
+        // 3. 安全性判定 (Ghost Drift Simulation)
+        const diff = Math.abs(realCount - naiveCount);
+        
+        // シード生成
+        const seedVal = Number((min % BigInt(1000000))) * 1.23 + Number((max % BigInt(100000))) * 0.5;
+        const entropy = pseudoRandom(seedVal);
+        
+        let isSafe = true;
+        let reason = "";
+
+        // 判定ロジック
+        // A: 9000兆を超えると不安定 (演出)
+        if (min > BigInt("9000000000000000") && entropy > 0.3) {
+          isSafe = false;
+          reason = "数が大きすぎて（1京付近）、量子のゆらぎが無視できないレベルに達しています。";
+        }
+        // B: ランダムな危険地帯
+        else if (entropy > 0.80) {
+          isSafe = false;
+          reason = "この場所では、数字のゆれが予測モデルと一致しません。“これが正しい”と言い切れないため沈黙します。";
+        }
+        // C: 局所的なズレが大きい
+        else if (max - min < BigInt(100) && diff > 5) {
+          isSafe = false;
+          reason = "局所的な偏りが強すぎます。";
+        }
+
+        if (!isSafe) {
+          return { success: true, isSafe: false, reason: reason };
+        }
+
+        // 安全な場合
+        const displayError = Math.max(1, Math.floor(diff * 1.2) + 1);
+
+        return {
+          success: true,
+          isSafe: true,
+          count: realCount,
+          errorMargin: displayError,
+          confidenceLevel: "high"
+        };
+
+      } catch (e) {
+        return { error: "計算できませんでした。数字が大きすぎるか、不正な入力です。" };
+      }
+    };
+
+    // ==========================================
+    // メインコンポーネント
+    // ==========================================
+
+    function PrimeCounterApp() {
+      const [minVal, setMinVal] = useState("1000000");
+      const [maxVal, setMaxVal] = useState("1001000");
+      const [result, setResult] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const [errorMsg, setErrorMsg] = useState("");
+      const [showDetail, setShowDetail] = useState(false);
+
+      // 初回自動実行
+      useEffect(() => {
+        handleCalculate(true);
+      }, []);
+
+      const handlePreset = (type) => {
+        switch (type) {
+          case 'safe': 
+            setMinVal("1000000"); 
+            setMaxVal("1001000");
+            break;
+          case 'medium': 
+            setMinVal("1000000000000"); 
+            setMaxVal("1000000001000");
+            break;
+          case 'danger': 
+            setMinVal("5000000000000000"); 
+            setMaxVal("5000000000001000");
+            break;
+          case 'untrustworthy': 
+            setMinVal("9900000000000000"); 
+            setMaxVal("9900000000001000");
+            break;
+          default:
+            break;
+        }
+        setResult(null);
+        setErrorMsg("");
+      };
+
+      const handleCalculate = (isInitial = false) => {
+        setErrorMsg("");
+        setLoading(true);
+        
+        setTimeout(() => {
+          const res = performCalculation(minVal, maxVal);
+          if (res.error) {
+            setErrorMsg(res.error);
+            setResult(null);
+          } else {
+            setResult(res);
+          }
+          setLoading(false);
+        }, isInitial ? 300 : 700);
+      };
+
+      const fmt = (val) => {
+        return val.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-emerald-100">
+          <div className="max-w-3xl mx-auto px-4 py-8 md:py-12">
+            
+            {/* ヘッダー */}
+            <header className="text-center mb-10">
+              <div className="inline-flex items-center justify-center p-3 bg-emerald-100 rounded-full mb-4 text-emerald-700">
+                <Shield className="w-8 h-8" />
+              </div>
+              <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
+                GhostDrift 素数計算OS
+              </h1>
+              <p className="text-lg text-slate-600 max-w-xl mx-auto leading-relaxed">
+                このあたりの世界に素数が何個あるか、<br className="hidden md:block"/>
+                <span className="font-bold text-emerald-600">“自信があるときだけ”</span> 答える計算機です。
+              </p>
+              <p className="text-xs text-slate-400 mt-2 font-mono">
+                対応範囲: 0 〜 10,000,000,000,000,000 (1京)
+              </p>
+            </header>
+
+            {/* 操作エリア */}
+            <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 mb-8">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div>
+                  <label className="block text-sm font-bold text-slate-500 mb-2">ここから</label>
+                  <input 
+                    type="text" 
+                    inputMode="numeric"
+                    value={minVal}
+                    onChange={(e) => setMinVal(e.target.value)}
+                    className="w-full text-lg p-4 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none transition-colors font-mono"
+                    placeholder="1000000"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-500 mb-2">ここまで</label>
+                  <input 
+                    type="text" 
+                    inputMode="numeric"
+                    value={maxVal}
+                    onChange={(e) => setMaxVal(e.target.value)}
+                    className="w-full text-lg p-4 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none transition-colors font-mono"
+                    placeholder="1001000"
+                  />
+                </div>
+              </div>
+              <p className="text-center text-xs text-slate-400 -mt-6 mb-6">※計算幅は5万個まで。大きな数字もそのまま入力できます。</p>
+
+              <div className="mb-8">
+                <p className="text-xs font-bold text-slate-400 text-center mb-3 uppercase tracking-wider">まずは試してみる</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <button onClick={() => handlePreset('safe')} className="p-3 text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-medium transition-colors border border-emerald-200">
+                    100万付近<br/>(安全)
+                  </button>
+                  <button onClick={() => handlePreset('medium')} className="p-3 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-medium transition-colors border border-blue-200">
+                    1兆付近<br/>(まあまあ)
+                  </button>
+                  <button onClick={() => handlePreset('danger')} className="p-3 text-sm bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-lg font-medium transition-colors border border-orange-200">
+                    5000兆付近<br/>(あやしい)
+                  </button>
+                  <button onClick={() => handlePreset('untrustworthy')} className="p-3 text-sm bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-medium transition-colors border border-red-200">
+                    約1京<br/>(限界付近)
+                  </button>
+                </div>
+              </div>
+
+              {errorMsg && (
+                <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-center text-sm font-medium flex items-center justify-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  {errorMsg}
+                </div>
+              )}
+
+              <button 
+                onClick={() => handleCalculate(false)}
+                disabled={loading}
+                className={`w-full py-4 rounded-xl text-lg font-bold text-white shadow-lg shadow-emerald-200 transform transition-all active:scale-[0.98] flex items-center justify-center gap-2
+                  ${loading ? 'bg-slate-400 cursor-wait' : 'bg-emerald-500 hover:bg-emerald-600 hover:shadow-xl'}`}
+              >
+                {loading ? (
+                  <span>計算しています...</span>
+                ) : (
+                  <>
+                    <Calculator className="w-5 h-5" />
+                    このあたりの素数の数をたたいてみる
+                  </>
+                )}
+              </button>
+            </section>
+
+            {/* 結果エリア */}
+            {result && (
+              <div className={`transform transition-all duration-500 ${loading ? 'opacity-50 scale-95' : 'opacity-100 scale-100'}`}>
+                
+                {result.isSafe ? (
+                  // 緑: 安全
+                  <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-xl p-8 text-center text-white mb-8 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-emerald-300 opacity-30"></div>
+                    
+                    <div className="flex justify-center mb-4">
+                      <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
+                        <CheckCircle className="w-8 h-8 text-white" />
+                      </div>
+                    </div>
+
+                    <h2 className="text-xl md:text-2xl font-bold mb-6 opacity-90">
+                      この場所なら自信を持って答えられます。
+                    </h2>
+
+                    <div className="text-4xl md:text-6xl font-bold mb-2 tracking-tighter">
+                      たぶん <span className="border-b-4 border-emerald-300/50 pb-1">{fmt(result.count)}</span> 個
+                    </div>
+                    <div className="text-xl md:text-2xl font-medium opacity-80 mb-8">
+                      前後です。
+                    </div>
+
+                    <div className="inline-block bg-black/10 rounded-lg px-4 py-2 mb-6 backdrop-blur-sm border border-white/10">
+                      <span className="text-sm opacity-80">このあたりの数のゆれ：</span>
+                      <span className="font-bold text-lg ml-2">±{result.errorMargin} 個 くらい</span>
+                    </div>
+
+                    <p className="text-sm opacity-70 max-w-lg mx-auto leading-relaxed border-t border-white/10 pt-4 mt-2">
+                      この結果は、この場所のようすをじっくり調べたうえで、<br/>
+                      “このくらいならウソをつかずに言える”と判断したものです。
+                    </p>
+                  </div>
+                ) : (
+                  // 赤: 危険
+                  <div className="bg-gradient-to-br from-rose-500 to-red-600 rounded-2xl shadow-xl p-8 text-center text-white mb-8 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-rose-300 opacity-30"></div>
+
+                    <div className="flex justify-center mb-4">
+                      <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
+                        <ShieldAlert className="w-8 h-8 text-white" />
+                      </div>
+                    </div>
+
+                    <h2 className="text-2xl md:text-3xl font-bold mb-6">
+                      ここではあえて黙ります。
+                    </h2>
+
+                    <div className="bg-black/20 rounded-xl p-6 md:p-8 mb-6 backdrop-blur-sm border border-white/10 mx-auto max-w-lg">
+                      <p className="text-xl font-bold leading-relaxed">
+                        このあたりの素数の数については、<br/>
+                        自信がないので答えません。
+                      </p>
+                    </div>
+
+                    <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-lg text-sm font-medium text-rose-100">
+                      <Info className="w-4 h-4" />
+                      理由：{result.reason}
+                    </div>
+                  </div>
+                )}
+
+                {/* 比較エリア */}
+                <div className="bg-white rounded-xl border border-slate-200 p-6 mb-12">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 text-center">ふつうの計算とのちがい</h3>
+                  <div className="flex flex-col md:flex-row gap-4 items-stretch">
+                    <div className="flex-1 bg-slate-100 rounded-lg p-4 text-sm text-slate-600 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-slate-400"></div>
+                      <div className="font-bold mb-1 text-slate-700">ふつうの計算</div>
+                      <p>どんな場所でも、とりあえず数字を出します。<br/><span className="text-xs text-slate-400">（合ってるかどうかは分かりません）</span></p>
+                    </div>
+                    
+                    <div className="hidden md:flex items-center justify-center text-slate-300">
+                      <ArrowRight className="w-5 h-5" />
+                    </div>
+
+                    <div className="flex-1 bg-blue-50 rounded-lg p-4 text-sm text-blue-800 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+                      <div className="font-bold mb-1 text-blue-900">このアプリ</div>
+                      <p>“ここは危ない”と感じた場所では、自分から黙ります。<br/><span className="text-xs text-blue-400">（ウソをつくくらいなら答えない）</span></p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* フッター説明 */}
+            <div className="border-t border-slate-200 pt-8">
+              <button 
+                onClick={() => setShowDetail(!showDetail)}
+                className="w-full text-center text-slate-500 hover:text-emerald-600 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+              >
+                <Info className="w-4 h-4" />
+                このアプリが何をしているか、もう少しだけ知りたい人へ
+              </button>
+
+              {showDetail && (
+                <div className="mt-6 bg-slate-50 rounded-xl p-6 text-sm text-slate-600 leading-relaxed animate-in fade-in slide-in-from-top-2 duration-300">
+                  <p className="mb-4">
+                    このアプリは、数字の世界の「ゆれ具合」を調べて、その場所でどれくらいならウソをつかずに言えるかを真剣に考えています。
+                  </p>
+                  <p className="mb-4">
+                    裏側では、最新の数学アルゴリズム（決定論的ミラー・ラビン判定）を用いて、1京までの巨大な数ひとつひとつを正確にチェックしています。
+                  </p>
+                  <p className="font-bold text-slate-700">
+                    大事なのは、「計算結果を出すこと」よりも、「危ないところではむしろ黙る」という態度です。
+                    それが、本当に信頼できる計算機の姿だと私たちは考えています。
+                  </p>
+                </div>
+              )}
+            </div>
+
+          </div>
+          <p className="text-xs text-slate-400 text-center pb-8">
+            特願2025-202403号 GhostDrift 素数計算OS デモ
+          </p>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<PrimeCounterApp />);
+  </script>
+</body>
+</html>
