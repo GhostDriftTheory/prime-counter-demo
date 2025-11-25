@@ -462,25 +462,47 @@
 
                 {/* 比較エリア */}
                 <div className="bg-white rounded-xl border border-slate-200 p-6 mb-12">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 text-center">ふつうの計算とのちがい</h3>
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 text-center">
+                    ふつうの素数アプリとのちがい
+                  </h3>
                   <div className="flex flex-col md:flex-row gap-4 items-stretch">
+                    {/* 左：ふつうの素数計算アプリ */}
                     <div className="flex-1 bg-slate-100 rounded-lg p-4 text-sm text-slate-600 relative overflow-hidden">
                       <div className="absolute top-0 left-0 w-1 h-full bg-slate-400"></div>
-                      <div className="font-bold mb-1 text-slate-700">ふつうの計算</div>
-                      <p>どんな場所でも、とりあえず数字を出します。<br/><span className="text-xs text-slate-400">（合ってるかどうかは分かりません）</span></p>
+                      <div className="font-bold mb-1 text-slate-700">
+                        ふつうの素数計算アプリ
+                      </div>
+                      <p>
+                        入力された数には、いつでも答えを返します。
+                        <br />
+                        <span className="text-xs text-slate-400">
+                          （広い範囲を速く計算できる、ふつうにすごい道具）
+                        </span>
+                      </p>
                     </div>
-                    
+
                     <div className="hidden md:flex items-center justify-center text-slate-300">
                       <ArrowRight className="w-5 h-5" />
                     </div>
 
+                    {/* 右：この素数計算OS */}
                     <div className="flex-1 bg-blue-50 rounded-lg p-4 text-sm text-blue-800 relative overflow-hidden">
                       <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                      <div className="font-bold mb-1 text-blue-900">このアプリ</div>
-                      <p>“ここは危ない”と感じた場所では、自分から黙ります。<br/><span className="text-xs text-blue-400">（ウソをつくくらいなら答えない）</span></p>
+                      <div className="font-bold mb-1 text-blue-900">
+                        この素数計算OS
+                      </div>
+                      <p>
+                        先に「このあたりはどこまで信じていいか」を調べます。
+                        <br />
+                        <span className="text-xs text-blue-400">
+                          （安全だと分かった場所だけ個数を答え、
+                          危ないときは「わからない」と正直に黙る）
+                        </span>
+                      </p>
                     </div>
                   </div>
                 </div>
+
 
               </div>
             )}
@@ -535,6 +557,7 @@
   </script>
 </body>
 </html>
+
 
 
 
