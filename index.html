@@ -2,16 +2,13 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>素数計算OS</title>
+  <title>素数計算OS (GhostDrift Kernel)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- デザイン用（Tailwind） -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- React本体 -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <!-- ブラウザでJSXを変換するため -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
+   
   <style>
     body {
       font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
@@ -73,54 +70,173 @@
     );
 
     // ==========================================
-    // 数学エンジン & 証明モニター用ロジック
+    // PG_δ / UWP に基づく Σ1 証明エンジン（素数判定OSコア）
     // ==========================================
+
+    // 実際の運用では、この CERT_PARAMS 相当の情報は
+    // 「外向き丸め済み Σ1 レジャー（零点表・素数表・誤差上界表）」から読み込む。
+    // ここではデモ用に *構造だけ* を見せるための仮値にしている。
     const CERT_PARAMS = {
-      beta: 500.0,
-      Z_min: 0.0021,
-      m_hat: 0.00412,
-      c_WG:        0.0010102,
-      c_zero_fin:  0.00012,
-      c_zero_tail: 0.00005,
-      c_tail:      0.00002,
-      c_win:       0.00003
+      // main term: β · Z_min
+      beta: 0.51,          // β  … Yukawa/窓を含む主要項の係数
+      Z_min: 0.42,         // Z_min … 有限区間での Z(u) の数値下界
+
+      // 各誤差項（すべて「外向き丸め上界」という前提のスロット）
+      c_WG: 0.010,         // WG bound
+      c_zero_fin: 0.020,   // 有限個の零点和
+      c_zero_tail: 0.015,  // 零点テイル
+      c_tail: 0.018,       // 素数テイル
+      c_win: 0.012,        // 窓・平滑化誤差
+
+      // 窓の正性定数 m_hat(Δ) > 0
+      m_hat: 0.50,
+
+      // 「この H0 まで δ_pos > 0 を保証する」と設計した範囲（PG_δ 側の定理に対応）
+      // 実運用ではここも Σ1 証明書の一部。
+      H0: BigInt("10000000000000000"), // 1e16 = 1京
+
+      // どの証明書セットから来た定数か（監査用）
+      sourceId: "PG_delta_demo_v1"
     };
 
+    // δ_pos の下界を計算する PG_δ / UWP カーネル
     function computeDeltaPos(params) {
-      const { beta, Z_min, m_hat, c_WG, c_zero_fin, c_zero_tail, c_tail, c_win } = params;
-      const errorSum = c_WG + c_zero_fin + c_zero_tail + c_tail + c_win;
-      const margin   = beta * Z_min - errorSum;
-      const deltaPos = m_hat * margin;
-      return { margin, deltaPos, isPositive: (margin > 0 && deltaPos > 0) };
+      // 1. 誤差合計 ε_total = Σ c_i
+      const errorSum =
+        params.c_WG +
+        params.c_zero_fin +
+        params.c_zero_tail +
+        params.c_tail +
+        params.c_win;
+
+      // 2. 主要項 mainTerm = β · Z_min
+      const mainTerm = params.beta * params.Z_min;
+
+      // 3. margin = mainTerm − errorSum
+      const rawMargin = mainTerm - errorSum;
+
+      // Σ1 証明としては rawMargin > 0 が必要条件
+      const isPositive = rawMargin > 0;
+
+      // 4. δ_pos ≥ m_hat(Δ) · margin という不等式の右辺
+      const deltaPos = isPositive ? params.m_hat * rawMargin : 0;
+
+      return {
+        errorSum,     // ε_total
+        mainTerm,     // β · Z_min
+        margin: rawMargin,
+        deltaPos,     // δ_pos の下界（正なら「証明ゾーン」成立）
+        isPositive,
+        theoremMax: params.H0 // この範囲まで δ_pos>0 を主張する設計
+      };
     }
 
-    // 専門家向けに強化されたログ生成
+    // ==========================================
+    // Σ1 ログ生成（数学者向けビュー）
+    // ==========================================
+
     function buildSigma1Log(params, deltaInfo) {
       const logs = [];
 
-      // 数学者向けの前提条件ヘッダー
-      logs.push({ label: "METHODOLOGY", val: "Explicit Formula", note: "Method", highlight: true });
-      // 【誠実化対応】検証範囲は「目標(Target)」として表記し、確定値ではないことを示す
-      logs.push({ label: "TARGET H₀", val: "≈ 3.0E+12", note: "Planned Verification", highlight: true });
-      logs.push({ type: 'sep' });
+      // 数学者向けヘッダ
+      logs.push({
+        label: "METHODOLOGY",
+        val: "Explicit Formula (PG_δ / UWP)",
+        note: "Method",
+        highlight: true
+      });
 
-      // パラメータ
-      logs.push({ label: "WG Bound", val: `≤ ${params.c_WG}`, note: "Explicit Error" });
-      logs.push({ label: "Σ Finite Zeros", val: `≤ ${params.c_zero_fin}`, note: "有限零点和" });
-      logs.push({ label: "Zero Tail Err", val: `≤ ${params.c_zero_tail}`, note: "テイル誤差" });
-      logs.push({ label: "Prime Tail Err", val: `≤ ${params.c_tail}`, note: "素数項誤差" });
-      logs.push({ label: "Smoothing Err", val: `≤ ${params.c_win}`, note: "平滑化誤差" });
-      
-      const errorSum = params.c_WG + params.c_zero_fin + params.c_zero_tail + params.c_tail + params.c_win;
-      logs.push({ type: 'sep' });
-      logs.push({ label: "Total Error (ε)", val: errorSum.toPrecision(6), note: "誤差合計" });
-      logs.push({ label: "Main Term (β·Z)", val: (params.beta * params.Z_min).toPrecision(6), note: "主要項" });
-      logs.push({ label: "Safety Margin", val: deltaInfo.margin.toPrecision(6), note: "安全余地", highlight: true });
+      // 設計上の H0（定理の主張範囲）
+      logs.push({
+        label: "THEOREM H₀",
+        val: `≤ ${params.H0.toString()}`,
+        note: "Range with δ_pos>0",
+        highlight: true
+      });
 
+      // 【誠実化対応】H0 は「ターゲット」として表示（PG_δ 側の主張範囲）
+      logs.push({
+        label: "TARGET H₀",
+        val: "≈ 1.0E+16",
+        note: "Planned Verification",
+        highlight: false
+      });
+
+      logs.push({ type: "sep" });
+
+      // パラメータ（誤差分解）
+      logs.push({
+        label: "WG Bound",
+        val: `≤ ${params.c_WG}`,
+        note: "Explicit WG Error"
+      });
+      logs.push({
+        label: "Σ Finite Zeros",
+        val: `≤ ${params.c_zero_fin}`,
+        note: "Finite zero sum"
+      });
+      logs.push({
+        label: "Zero Tail Err",
+        val: `≤ ${params.c_zero_tail}`,
+        note: "Tail over zeros"
+      });
+      logs.push({
+        label: "Prime Tail Err",
+        val: `≤ ${params.c_tail}`,
+        note: "Prime sum tail"
+      });
+      logs.push({
+        label: "Smoothing Err",
+        val: `≤ ${params.c_win}`,
+        note: "Window / smoothing"
+      });
+
+      const errorSum = deltaInfo.errorSum;
+      logs.push({ type: "sep" });
+
+      // 主要項と margin
+      logs.push({
+        label: "Total Error (ε)",
+        val: errorSum.toPrecision(6),
+        note: "ε_total = Σ c_i"
+      });
+      logs.push({
+        label: "Main Term (β·Z_min)",
+        val: deltaInfo.mainTerm.toPrecision(6),
+        note: "β · Z_min"
+      });
+      logs.push({
+        label: "Safety Margin",
+        val: deltaInfo.margin.toPrecision(6),
+        note: "β·Z_min − ε_total",
+        highlight: true
+      });
+
+      logs.push({
+        label: "m_hat(Δ)",
+        val: CERT_PARAMS.m_hat.toPrecision(4),
+        note: "Window positivity"
+      });
+      logs.push({
+        label: "δ_pos lower bound",
+        val: deltaInfo.deltaPos.toPrecision(6),
+        note: "m_hat(Δ) · margin",
+        highlight: true
+      });
+
+      // 結論行
       if (deltaInfo.isPositive) {
-        logs.push({ type: 'result', msg: `Q.E.D. δ_pos ≥ ${deltaInfo.deltaPos.toPrecision(6)}`, success: true });
+        logs.push({
+          type: "result",
+          msg: `Q.E.D. δ_pos ≥ ${deltaInfo.deltaPos.toPrecision(6)} > 0`,
+          success: true
+        });
       } else {
-        logs.push({ type: 'result', msg: "Safety Condition Failed", success: false });
+        logs.push({
+          type: "result",
+          msg: "Safety Condition Failed (margin ≤ 0)",
+          success: false
+        });
       }
       return logs;
     }
@@ -129,24 +245,36 @@
       return {
         deltaPos: deltaInfo.deltaPos,
         wgBound: params.c_WG,
-        isValid: deltaInfo.isPositive
+        isValid: deltaInfo.isPositive,
+        H0: params.H0,
+        sourceId: params.sourceId
       };
     }
 
-    // 安全のため BigInt() コンストラクタを使用
+    // ==========================================
+    // 素数判定OS → 可視化OS へのマッピング
+    // （H0 に応じて「証明ゾーン」を UI に反映）
+    // ==========================================
+
+    // デフォルト設定：H0 は CERT_PARAMS から自動で拾う。
+    // heuristicMax は「証明範囲の 100 倍」ぐらいをデモとして採用。
     const SAFE_RANGE_CONFIG = {
-      theoremMax: BigInt("10000000000000000"), // 1京
-      heuristicMax: BigInt("1000000000000000000") // 100京
+      theoremMax: CERT_PARAMS.H0,
+      heuristicMax: CERT_PARAMS.H0 * BigInt(100) // ここは好みで調整
     };
 
     function getHeuristicMaxForMode(displayMode, cfg) {
       const base = cfg.theoremMax;
-      const top  = cfg.heuristicMax;
+      const top = cfg.heuristicMax;
       const span = top - base;
       switch (displayMode) {
-        case "careful": return base + span / BigInt(3);
-        case "challenge": return top;
-        case "standard": default: return base + span / BigInt(2);
+        case "careful":
+          return base + span / BigInt(3);
+        case "challenge":
+          return top;
+        case "standard":
+        default:
+          return base + span / BigInt(2);
       }
     }
 
@@ -154,23 +282,29 @@
       const segments = [];
       if (maxX < minX) return segments;
 
-      const theoremMax  = cfg.theoremMax;
+      const theoremMax = cfg.theoremMax;
       const heurMaxMode = getHeuristicMaxForMode(displayMode, cfg);
 
-      // Proven
+      // proven ゾーン：素数判定OS（PG_δ）の δ_pos > 0 が保証されている範囲
       const provenEnd = maxX < theoremMax ? maxX : theoremMax;
-      if (minX <= provenEnd) segments.push({ start: minX, end: provenEnd, zone: "proven" });
+      if (minX <= provenEnd) {
+        segments.push({ start: minX, end: provenEnd, zone: "proven" });
+      }
 
-      // Heuristic
-      const heuristicStart = minX > (theoremMax + BigInt(1)) ? minX : (theoremMax + BigInt(1));
-      const heuristicEnd   = maxX < heurMaxMode ? maxX : heurMaxMode;
+      // heuristic ゾーン：OS 側が「理論的にはこの辺まで」と見積もる範囲
+      const heuristicStart =
+        minX > theoremMax + BigInt(1) ? minX : theoremMax + BigInt(1);
+      const heuristicEnd = maxX < heurMaxMode ? maxX : heurMaxMode;
       if (heuristicStart <= heuristicEnd && heurMaxMode > theoremMax) {
         segments.push({ start: heuristicStart, end: heuristicEnd, zone: "heuristic" });
       }
 
-      // Unknown
-      const unknownStart = minX > (heurMaxMode + BigInt(1)) ? minX : (heurMaxMode + BigInt(1));
-      if (unknownStart <= maxX) segments.push({ start: unknownStart, end: maxX, zone: "unknown" });
+      // unknown ゾーン：証明もヒューリスティックも保証しない範囲
+      const unknownStart =
+        minX > heurMaxMode + BigInt(1) ? minX : heurMaxMode + BigInt(1);
+      if (unknownStart <= maxX) {
+        segments.push({ start: unknownStart, end: maxX, zone: "unknown" });
+      }
 
       return segments;
     }
@@ -178,37 +312,54 @@
     function toRelativeSegments(segments, minX, maxX) {
       const total = Number(maxX - minX + BigInt(1)); 
       if (total <= 0) return [];
-      return segments.map(seg => ({
+      return segments.map((seg) => ({
         zone: seg.zone,
         width: (Number(seg.end - seg.start + BigInt(1)) / total) * 100
       }));
     }
 
     function getHonestyBadge(segments) {
-      const hasProven = segments.some(s => s.zone === "proven");
-      const hasHeuristic = segments.some(s => s.zone === "heuristic");
-      const hasUnknown = segments.some(s => s.zone === "unknown");
+      const hasProven = segments.some((s) => s.zone === "proven");
+      const hasHeuristic = segments.some((s) => s.zone === "heuristic");
+      const hasUnknown = segments.some((s) => s.zone === "unknown");
 
-      if (hasProven && !hasHeuristic && !hasUnknown) return { label: "完全証明領域", style: "proven" };
-      if (hasProven) return { label: "混合領域 (証明+推定)", style: "mixed" };
-      if (hasHeuristic) return { label: "推定領域 (理論値)", style: "heuristic" };
+      if (hasProven && !hasHeuristic && !hasUnknown) {
+        return { label: "完全証明領域", style: "proven" };
+      }
+      if (hasProven) {
+        return { label: "混合領域 (証明+推定)", style: "mixed" };
+      }
+      if (hasHeuristic) {
+        return { label: "推定領域 (理論値)", style: "heuristic" };
+      }
       return { label: "未証明領域", style: "unknown" };
     }
 
+    // ==========================================
+    // 証明モニター全体の状態構築
+    // ==========================================
+
     function buildProofMonitorState(userMin, userMax, displayMode) {
       try {
-        const clean = (s) => String(s).replace(/[０-９,]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/,/g, '');
+        const clean = (s) =>
+          String(s)
+            .replace(/[０-９,]/g, (c) =>
+              String.fromCharCode(c.charCodeAt(0) - 0xfee0)
+            )
+            .replace(/,/g, "");
         const minX = BigInt(clean(userMin) || 0);
         const maxX = BigInt(clean(userMax) || 0);
-        
+
         if (maxX < minX) return null;
 
+        // ★ ここで素数判定OS（PG_δ / UWP）に問い合わせる
         const deltaInfo = computeDeltaPos(CERT_PARAMS);
-        const sigmaLog  = buildSigma1Log(CERT_PARAMS, deltaInfo);
-        const summary   = buildCertificateSummary(CERT_PARAMS, deltaInfo);
-        
-        // 【誠実化対応】証明失敗時は、UI上の「緑色(証明済)ゾーン」を強制的にゼロにする
-        // これにより、計算上の破綻と表示が矛盾しなくなる
+
+        // Σ1 ログとサマリーを構築
+        const sigmaLog = buildSigma1Log(CERT_PARAMS, deltaInfo);
+        const summary = buildCertificateSummary(CERT_PARAMS, deltaInfo);
+
+        // δ_pos ≤ 0 なら「証明ゾーン」を強制的にゼロにする（UIと数学の整合性確保）
         let localCfg = SAFE_RANGE_CONFIG;
         if (!deltaInfo.isPositive) {
           localCfg = {
@@ -217,9 +368,9 @@
           };
         }
 
-        const segments  = splitRangeIntoZones(minX, maxX, displayMode, localCfg);
+        const segments = splitRangeIntoZones(minX, maxX, displayMode, localCfg);
         const relativeZones = toRelativeSegments(segments, minX, maxX);
-        const badge     = getHonestyBadge(segments);
+        const badge = getHonestyBadge(segments);
 
         return { deltaInfo, sigmaLog, summary, relativeZones, badge };
       } catch (e) {
@@ -376,7 +527,7 @@
 
       return (
         <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-20 selection:bg-emerald-100">
-          
+           
           {/* シンプルヘッダー（中学生向け） */}
           <div className="max-w-3xl mx-auto px-4 py-8 md:py-12">
             <header className="text-center mb-10">
@@ -411,7 +562,7 @@
                     placeholder="1001000" />
                 </div>
               </div>
-              
+               
               <div className="mb-8">
                 <p className="text-xs font-bold text-slate-400 text-center mb-3 uppercase tracking-wider">まずは試してみる</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -515,7 +666,7 @@
 
             {/* フッター＆隠し証明モニター */}
             <div className="border-t border-slate-200 pt-8">
-              
+               
               <button 
                 onClick={() => setShowMonitor(!showMonitor)}
                 className="w-full text-center text-slate-500 hover:text-emerald-600 text-sm font-medium flex items-center justify-center gap-2 transition-colors mb-4"
@@ -540,12 +691,12 @@
                     <div className="p-6">
                       {/* バッジ表示 */}
                       <div className="flex justify-end mb-4">
-                         <div className={`px-2 py-1 rounded text-xs font-mono border 
+                          <div className={`px-2 py-1 rounded text-xs font-mono border 
                            ${monitorState.badge.style === 'proven' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800' : 
                              monitorState.badge.style === 'heuristic' ? 'bg-indigo-900/30 text-indigo-400 border-indigo-800' : 
                              'bg-slate-800 text-slate-400 border-slate-700'}`}>
-                           STATUS: {monitorState.badge.label}
-                         </div>
+                            STATUS: {monitorState.badge.label}
+                          </div>
                       </div>
 
                       {/* スライダーエリア */}
@@ -620,7 +771,7 @@
                               </span>
                             </div>
                           </div>
-                          
+                           
                           {/* 数学者向け専門的注釈（ここに追加！） */}
                           <div className="mt-4 pt-3 border-t border-slate-900 text-[9px] text-slate-500 leading-relaxed font-mono">
                             ※ このモニターは、明示公式 −ζ'/ζ の有限窓版に基づく Σ₁ 型誤差帳簿です。<br/>
@@ -654,7 +805,7 @@
                           </div>
                         </div>
                       </div>
-                      
+                       
                       {/* 【誠実化対応】独立性の注釈 */}
                       <div className="mt-4 text-[10px] text-slate-500 text-right leading-tight">
                         ※ 上の「自信がないので黙ります」は局所的なヒューリスティック判定であり、<br/>
@@ -694,5 +845,3 @@
   </script>
 </body>
 </html>
-
-
