@@ -230,6 +230,62 @@
     };
 
     // ==========================================
+    // スパークアニメーション（素数定理による高速予測の演出）
+    // ==========================================
+    function SpeedSpark({ active, mode, onEnd }) {
+      const [lines, setLines] = useState([]);
+
+      useEffect(() => {
+        if (!active) {
+          setLines([]);
+          return;
+        }
+
+        const count = mode === "frontier" ? 22 : 12; 
+        const generated = Array.from({ length: count }, (_, i) => {
+          const base = mode === "frontier" ? 0.9 : 0.7;
+          const jitter = Math.random() * 0.5;
+          return {
+            id: `${Date.now()}-${i}`,
+            delay: i * 0.05 + Math.random() * 0.15,
+            duration: base + jitter,
+            top: 35 + Math.random() * 20,
+            thickness: mode === "frontier" ? 8 + Math.random() * 3 : 6 
+          };
+        });
+
+        setLines(generated);
+
+        const maxT = Math.max(...generated.map(l => l.duration + l.delay));
+        const timer = setTimeout(() => {
+          setLines([]);
+          if (onEnd) onEnd(); 
+        }, maxT * 1000 + 300);
+
+        return () => clearTimeout(timer);
+      }, [active, mode, onEnd]);
+
+      if (!active || lines.length === 0) return null;
+
+      return (
+        <div className="spark-layer">
+          {lines.map(l => (
+            <div
+              key={l.id}
+              className="spark-line"
+              style={{
+                top: `${l.top}vh`,
+                height: `${l.thickness}px`,
+                animationDuration: `${l.duration}s`,
+                animationDelay: `${l.delay}s`
+              }}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    // ==========================================
     // PG_δ / UWP に基づく Σ1 証明エンジン
     // ==========================================
     const CERT_PARAMS = {
@@ -493,19 +549,18 @@
       }, [state.start, state.current, state.max, state.total]);
 
       return (
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-8">
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">ひとつずつ数えて確かめる</h3>
-          <p className="text-xs text-slate-500 text-center mb-4">さっき指定した区間で、素数を1つずつチェックしていく様子です。</p>
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-8">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">ひとつずつ数えて確かめる</h3>
           {state.error ? <p className="text-xs text-red-500 text-center">{state.error}</p> : (
             <>
-              <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden mb-3">
-                <div className="h-2 bg-slate-400 transition-all" style={{ width: `${progress}%` }} />
+              <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden mb-2">
+                <div className="h-1.5 bg-slate-400 transition-all" style={{ width: `${progress}%` }} />
               </div>
-              <div className="flex justify-between text-xs text-slate-500 mb-1">
-                <span>いま見ている数：<span className="font-mono text-slate-800 ml-1">{state.current ? state.current.toString() : "-"}</span></span>
-                <span>見つかった素数：<span className="font-mono text-emerald-600 ml-1">{state.count}</span></span>
+              <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                <span>Check: <span className="font-mono text-slate-800">{state.current ? state.current.toString() : "-"}</span></span>
+                <span>Count: <span className="font-mono text-emerald-600">{state.count}</span></span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-2 text-center">{state.done ? "この範囲の素数をすべて数え終わりました。" : state.active ? "1つ1つチェックしながら進んでいます。" : "計算の準備をしています。"}</p>
+              <p className="text-[10px] text-slate-400 text-center">指定区間で素数判定を1つずつ実行中。</p>
             </>
           )}
         </div>
@@ -527,6 +582,7 @@
       const [frontierMode, setFrontierMode] = useState(false);
       
       const [confettiLevel, setConfettiLevel] = useState(null); // Canvas演出用レベル
+      const [sparkMode, setSparkMode] = useState(null); 
       const [copied, setCopied] = useState(false);
 
       // シェア文言を更新
@@ -590,7 +646,7 @@
             setResult({ success: true, isSafe: true, frontier: true, count: approxCount, errorMargin, confidenceLevel: "theory" });
             
             // frontierモードは一瞬で予測するので即座に演出レベルを決定
-            setConfettiLevel("max"); 
+            setSparkMode("frontier");
             
             setLoading(false);
             return;
@@ -634,15 +690,14 @@
           
           {/* Canvas演出レイヤー */}
           {confettiLevel && <ConfettiCanvas level={confettiLevel} />}
+          {sparkMode && <SpeedSpark active={!!sparkMode} mode={sparkMode} onEnd={() => setSparkMode(null)} />}
            
           {/* ヘッダー */}
           <div className="max-w-3xl mx-auto px-4 py-8 md:py-12">
             <header className="text-center mb-10">
               <div className="inline-flex items-center justify-center px-4 py-2 bg-emerald-100 rounded-full mb-4 text-emerald-700 gap-2">
                 <Shield className="w-6 h-6" />
-                <span className="text-xs font-semibold tracking-wide">
-                  GhostDrift 素数OSカーネル
-                </span>
+                <span className="text-xs font-semibold tracking-wide">GhostDrift 素数OSカーネル</span>
               </div>
               <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">素数計算OS</h1>
               <p className="text-lg text-slate-600 max-w-xl mx-auto leading-relaxed mb-2">
@@ -680,7 +735,7 @@
                   <button onClick={() => handlePreset('untrustworthy')} className="p-3 text-sm bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-medium transition-colors border border-red-200">約1京<br/>(全力)</button>
                   <button onClick={() => handlePreset('frontier')} className="p-3 text-sm bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-lg font-medium transition-colors border border-violet-200">人類未踏級<br/>(固定サンプル)</button>
                 </div>
-                <p className="mt-3 text-[11px] text-slate-400 text-center">危ないと判断した区間では、カウンターを動かさない設計です。</p>
+                <p className="mt-3 text-[11px] text-slate-400 text-center">危険な区間では動作を停止します。</p>
               </div>
 
               {errorMsg && <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-center text-sm font-medium flex items-center justify-center gap-2"><AlertTriangle className="w-4 h-4" />{errorMsg}</div>}
@@ -692,18 +747,9 @@
 
             {/* OSの約束バッジ */}
             <div className="mt-4 flex flex-wrap justify-center gap-2 text-[11px] mb-8">
-              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">
-                <Shield className="w-3 h-3" />
-                <span>安全ゾーン以外では黙る</span>
-              </div>
-              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-50 text-sky-700">
-                <Zap className="w-3 h-3" />
-                <span>証明を前払いして高速化</span>
-              </div>
-              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">
-                <Database className="w-3 h-3" />
-                <span>1京までのログを扱える設計</span>
-              </div>
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700"><Shield className="w-3 h-3" /><span>安全ゾーン以外では黙る</span></div>
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-50 text-sky-700"><Zap className="w-3 h-3" /><span>証明を前払いして高速化</span></div>
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200"><Database className="w-3 h-3" /><span>1京までのログを扱える設計</span></div>
             </div>
 
             {/* 結果エリア */}
@@ -735,40 +781,40 @@
                     
                     {/* 安全度メーター */}
                     {monitorState && monitorState.summary && (
-                      <div className="mt-2 mb-4">
+                      <div className="mt-2 mb-6">
                         <div className="text-xs opacity-80 mb-1">安全度メーター</div>
-                        <div className="w-full h-2 rounded-full bg-white/20 overflow-hidden"><div className="h-2 bg-emerald-300" style={{ width: `${safetyLevel}%` }} /></div>
+                        <div className="w-full h-2 rounded-full bg-white/20 overflow-hidden"><div className="h-2 bg-emerald-300" style={{ width: `${100}%` }} /></div>
                         <div className="text-[11px] opacity-75 mt-1">δ_pos にもとづく、この区間の安全度スコアです。</div>
                       </div>
                     )}
 
-                    {/* ローカル指標 */}
-                    {typeof result.naiveCount !== "undefined" && (
-                      <div className="mt-4 flex flex-wrap justify-center gap-3 text-xs opacity-90">
-                        <div className="bg-black/20 rounded px-3 py-1.5 backdrop-blur-sm">素朴な素数定理(Li)とのズレ: <span className="font-mono font-bold">{fmt(result.diff)}</span>個</div>
-                        <div className="bg-black/20 rounded px-3 py-1.5 backdrop-blur-sm">相対誤差: <span className="font-mono font-bold">{result.errorRate.toFixed(4)}%</span></div>
-                      </div>
-                    )}
-
-                    {/* コスト感 */}
-                    {costMetrics && (
-                      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-left">
-                        <div className="bg-black/25 rounded-lg p-3">
-                          <div className="text-[11px] font-mono text-emerald-200 mb-1">この範囲を 1つずつ数えた場合のコスト</div>
-                          <div>素数判定 <span className="font-mono font-bold">{fmt(costMetrics.naiveSteps)}</span>回ぶんの計算が必要です。</div>
+                    {/* 性能指標ブロック */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-left">
+                      {/* 正確性 */}
+                      {typeof result.naiveCount !== "undefined" && (
+                        <div className="bg-black/20 rounded-lg p-3 backdrop-blur-sm">
+                          <div className="font-bold text-emerald-100 border-b border-emerald-400/30 pb-1 mb-2">正確性</div>
+                          <div className="flex justify-between mb-1"><span>理論値とのズレ</span><span className="font-mono font-bold">{fmt(result.diff)}</span></div>
+                          <div className="flex justify-between"><span>相対誤差</span><span className="font-mono font-bold">{result.errorRate.toFixed(4)}%</span></div>
                         </div>
-                        <div className="bg-emerald-900/40 rounded-lg p-3">
-                          <div className="text-[11px] font-mono text-emerald-200 mb-1">この OS がオンラインで払っているコスト</div>
-                          <div>理論＋検査で 約<span className="font-mono font-bold">50</span>ステップ。</div>
+                      )}
+                      {/* 速度 */}
+                      {costMetrics && (
+                        <div className="bg-emerald-900/40 rounded-lg p-3 backdrop-blur-sm">
+                          <div className="font-bold text-emerald-100 border-b border-emerald-400/30 pb-1 mb-2">速度</div>
+                          <div className="flex justify-between mb-1"><span>従来法</span><span className="font-mono">{fmt(costMetrics.naiveSteps)}回</span></div>
+                          <div className="flex justify-between"><span>本OS</span><span className="font-mono font-bold">約{fmt(costMetrics.osSteps)}回</span></div>
                           {costMetrics.speedup > 1 && (
-                            <div className="text-[11px] text-emerald-100 mt-1">従来法より 約<span className="font-mono font-bold ml-1">{fmt(costMetrics.speedup)}</span>倍 軽く済みます。</div>
+                            <div className="mt-1 pt-1 border-t border-emerald-400/20 text-emerald-200 text-right">
+                              従来法より <span className="font-bold text-emerald-100">約{fmt(costMetrics.speedup)}倍</span> 軽く済みます。
+                            </div>
                           )}
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     <p className="text-sm opacity-70 max-w-lg mx-auto leading-relaxed border-t border-white/10 pt-4 mt-4">
-                      世界の見積もりに効くサイズだけを、嘘偽りなく保証します。
+                      世界の見積もりに効くサイズだけ保証します。
                     </p>
                   </div>
                 ) : (
@@ -784,35 +830,21 @@
                   </div>
                 )}
 
+                {/* カウンター (結果直下に移動) */}
+                {!frontierMode && <SlowPrimeCounter minVal={minVal} maxVal={maxVal} runId={runId} onFinish={handleCounterFinish} />}
+
                 {/* 共有 */}
                 <div className="bg-slate-100 rounded-xl p-4 mb-6 flex flex-col md:flex-row items-stretch gap-3">
                   <div className="flex-1">
                     <p className="text-xs font-bold text-slate-500 mb-1">このデモをそのまま紹介できる一文</p>
-                    <p className="text-xs text-slate-600 leading-relaxed">素数の数を<span className="font-semibold">“自信があるときだけ”</span>教えてくれる計算機「GhostDrift 素数計算OS」のデモ。<br />危ない場所ではちゃんと黙るように設計されています。</p>
+                    <p className="text-xs text-slate-600 leading-relaxed">巨大区間の素数個数を、推測ではなく“保証つき”で即時に返す新方式のデモです。<br/>危険域には踏み込まず、確実に言える範囲だけ高速に出す──素数計算の時代がひとつ変わる入口になっています。</p>
                   </div>
                   <div className="flex items-center md:items-end">
                     <button onClick={handleCopyShare} className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-900 transition-colors flex items-center gap-1"><Calculator className="w-3 h-3" />{copied ? "コピーしました" : "紹介文をコピー"}</button>
                   </div>
                 </div>
 
-                {/* カウンター */}
-                {!frontierMode && <SlowPrimeCounter minVal={minVal} maxVal={maxVal} runId={runId} onFinish={handleCounterFinish} />}
-
-                {/* 比較 */}
-                <div className="bg-white rounded-xl border border-slate-200 p-6 mb-12">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 text-center">ふつうの計算とのちがい</h3>
-                  <div className="flex flex-col md:flex-row gap-4 items-stretch">
-                    <div className="flex-1 bg-slate-100 rounded-lg p-4 text-sm text-slate-600 relative overflow-hidden">
-                      <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                      <div className="font-bold mb-1 text-blue-900">このアプリ</div>
-                      <p>“ここは危ない”と感じた場所では、自分から黙ります。<br/><span className="text-xs text-blue-400">（ウソをつくくらいなら答えない）</span></p>
-                      {/* ★ 従来法では不可能だった点 */}
-                      <p className="mt-2 text-[11px] font-semibold text-blue-900">
-                        この OS が扱う巨大な区間は、昔のやり方では「理論上の予測」しかできなかった領域です。
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                {/* 比較 (削除済み) */}
               </div>
             )}
 
