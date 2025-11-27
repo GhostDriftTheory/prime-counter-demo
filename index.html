@@ -4,9 +4,12 @@
   <meta charset="UTF-8" />
   <title>素数計算OS (GhostDrift Kernel)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- デザイン用（Tailwind） -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React本体 -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- ブラウザでJSXを変換するため -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
    
   <style>
@@ -73,35 +76,22 @@
     // PG_δ / UWP に基づく Σ1 証明エンジン（素数判定OSコア）
     // ==========================================
 
-    // 実際の運用では、この CERT_PARAMS 相当の情報は
-    // 「外向き丸め済み Σ1 レジャー（零点表・素数表・誤差上界表）」から読み込む。
-    // ここではデモ用に *構造だけ* を見せるための仮値にしている。
     const CERT_PARAMS = {
-      // main term: β · Z_min
-      beta: 0.51,          // β  … Yukawa/窓を含む主要項の係数
-      Z_min: 0.42,         // Z_min … 有限区間での Z(u) の数値下界
+      beta: 0.51,          
+      Z_min: 0.42,         
 
-      // 各誤差項（すべて「外向き丸め上界」という前提のスロット）
-      c_WG: 0.010,         // WG bound
-      c_zero_fin: 0.020,   // 有限個の零点和
-      c_zero_tail: 0.015,  // 零点テイル
-      c_tail: 0.018,       // 素数テイル
-      c_win: 0.012,        // 窓・平滑化誤差
+      c_WG: 0.010,         
+      c_zero_fin: 0.020,   
+      c_zero_tail: 0.015,  
+      c_tail: 0.018,       
+      c_win: 0.012,        
 
-      // 窓の正性定数 m_hat(Δ) > 0
       m_hat: 0.50,
-
-      // 「この H0 まで δ_pos > 0 を保証する」と設計した範囲（PG_δ 側の定理に対応）
-      // 実運用ではここも Σ1 証明書の一部。
-      H0: BigInt("10000000000000000"), // 1e16 = 1京
-
-      // どの証明書セットから来た定数か（監査用）
+      H0: BigInt("10000000000000000"), 
       sourceId: "PG_delta_demo_v1"
     };
 
-    // δ_pos の下界を計算する PG_δ / UWP カーネル
     function computeDeltaPos(params) {
-      // 1. 誤差合計 ε_total = Σ c_i
       const errorSum =
         params.c_WG +
         params.c_zero_fin +
@@ -109,25 +99,18 @@
         params.c_tail +
         params.c_win;
 
-      // 2. 主要項 mainTerm = β · Z_min
       const mainTerm = params.beta * params.Z_min;
-
-      // 3. margin = mainTerm − errorSum
       const rawMargin = mainTerm - errorSum;
-
-      // Σ1 証明としては rawMargin > 0 が必要条件
       const isPositive = rawMargin > 0;
-
-      // 4. δ_pos ≥ m_hat(Δ) · margin という不等式の右辺
       const deltaPos = isPositive ? params.m_hat * rawMargin : 0;
 
       return {
-        errorSum,     // ε_total
-        mainTerm,     // β · Z_min
+        errorSum,     
+        mainTerm,     
         margin: rawMargin,
-        deltaPos,     // δ_pos の下界（正なら「証明ゾーン」成立）
+        deltaPos,     
         isPositive,
-        theoremMax: params.H0 // この範囲まで δ_pos>0 を主張する設計
+        theoremMax: params.H0 
       };
     }
 
@@ -137,106 +120,30 @@
 
     function buildSigma1Log(params, deltaInfo) {
       const logs = [];
-
-      // 数学者向けヘッダ
-      logs.push({
-        label: "METHODOLOGY",
-        val: "Explicit Formula (PG_δ / UWP)",
-        note: "Method",
-        highlight: true
-      });
-
-      // 設計上の H0（定理の主張範囲）
-      logs.push({
-        label: "THEOREM H₀",
-        val: `≤ ${params.H0.toString()}`,
-        note: "Range with δ_pos>0",
-        highlight: true
-      });
-
-      // 【誠実化対応】H0 は「ターゲット」として表示（PG_δ 側の主張範囲）
-      logs.push({
-        label: "TARGET H₀",
-        val: "≈ 1.0E+16",
-        note: "Planned Verification",
-        highlight: false
-      });
-
+      logs.push({ label: "METHODOLOGY", val: "Explicit Formula (PG_δ / UWP)", note: "Method", highlight: true });
+      logs.push({ label: "THEOREM H₀", val: `≤ ${params.H0.toString()}`, note: "Range with δ_pos>0", highlight: true });
+      logs.push({ label: "TARGET H₀", val: "≈ 1.0E+16", note: "Planned Verification", highlight: false });
       logs.push({ type: "sep" });
 
-      // パラメータ（誤差分解）
-      logs.push({
-        label: "WG Bound",
-        val: `≤ ${params.c_WG}`,
-        note: "Explicit WG Error"
-      });
-      logs.push({
-        label: "Σ Finite Zeros",
-        val: `≤ ${params.c_zero_fin}`,
-        note: "Finite zero sum"
-      });
-      logs.push({
-        label: "Zero Tail Err",
-        val: `≤ ${params.c_zero_tail}`,
-        note: "Tail over zeros"
-      });
-      logs.push({
-        label: "Prime Tail Err",
-        val: `≤ ${params.c_tail}`,
-        note: "Prime sum tail"
-      });
-      logs.push({
-        label: "Smoothing Err",
-        val: `≤ ${params.c_win}`,
-        note: "Window / smoothing"
-      });
+      logs.push({ label: "WG Bound", val: `≤ ${params.c_WG}`, note: "Explicit WG Error" });
+      logs.push({ label: "Σ Finite Zeros", val: `≤ ${params.c_zero_fin}`, note: "Finite zero sum" });
+      logs.push({ label: "Zero Tail Err", val: `≤ ${params.c_zero_tail}`, note: "Tail over zeros" });
+      logs.push({ label: "Prime Tail Err", val: `≤ ${params.c_tail}`, note: "Prime sum tail" });
+      logs.push({ label: "Smoothing Err", val: `≤ ${params.c_win}`, note: "Window / smoothing" });
 
       const errorSum = deltaInfo.errorSum;
       logs.push({ type: "sep" });
+      logs.push({ label: "Total Error (ε)", val: errorSum.toPrecision(6), note: "ε_total = Σ c_i" });
+      logs.push({ label: "Main Term (β·Z_min)", val: deltaInfo.mainTerm.toPrecision(6), note: "β · Z_min" });
+      logs.push({ label: "Safety Margin", val: deltaInfo.margin.toPrecision(6), note: "β·Z_min − ε_total", highlight: true });
 
-      // 主要項と margin
-      logs.push({
-        label: "Total Error (ε)",
-        val: errorSum.toPrecision(6),
-        note: "ε_total = Σ c_i"
-      });
-      logs.push({
-        label: "Main Term (β·Z_min)",
-        val: deltaInfo.mainTerm.toPrecision(6),
-        note: "β · Z_min"
-      });
-      logs.push({
-        label: "Safety Margin",
-        val: deltaInfo.margin.toPrecision(6),
-        note: "β·Z_min − ε_total",
-        highlight: true
-      });
+      logs.push({ label: "m_hat(Δ)", val: CERT_PARAMS.m_hat.toPrecision(4), note: "Window positivity" });
+      logs.push({ label: "δ_pos lower bound", val: deltaInfo.deltaPos.toPrecision(6), note: "m_hat(Δ) · margin", highlight: true });
 
-      logs.push({
-        label: "m_hat(Δ)",
-        val: CERT_PARAMS.m_hat.toPrecision(4),
-        note: "Window positivity"
-      });
-      logs.push({
-        label: "δ_pos lower bound",
-        val: deltaInfo.deltaPos.toPrecision(6),
-        note: "m_hat(Δ) · margin",
-        highlight: true
-      });
-
-      // 結論行
       if (deltaInfo.isPositive) {
-        logs.push({
-          type: "result",
-          msg: `Q.E.D. δ_pos ≥ ${deltaInfo.deltaPos.toPrecision(6)} > 0`,
-          success: true
-        });
+        logs.push({ type: "result", msg: `Q.E.D. δ_pos ≥ ${deltaInfo.deltaPos.toPrecision(6)} > 0`, success: true });
       } else {
-        logs.push({
-          type: "result",
-          msg: "Safety Condition Failed (margin ≤ 0)",
-          success: false
-        });
+        logs.push({ type: "result", msg: "Safety Condition Failed (margin ≤ 0)", success: false });
       }
       return logs;
     }
@@ -253,14 +160,11 @@
 
     // ==========================================
     // 素数判定OS → 可視化OS へのマッピング
-    // （H0 に応じて「証明ゾーン」を UI に反映）
     // ==========================================
 
-    // デフォルト設定：H0 は CERT_PARAMS から自動で拾う。
-    // heuristicMax は「証明範囲の 100 倍」ぐらいをデモとして採用。
     const SAFE_RANGE_CONFIG = {
       theoremMax: CERT_PARAMS.H0,
-      heuristicMax: CERT_PARAMS.H0 * BigInt(100) // ここは好みで調整
+      heuristicMax: CERT_PARAMS.H0 * BigInt(100) 
     };
 
     function getHeuristicMaxForMode(displayMode, cfg) {
@@ -268,13 +172,9 @@
       const top = cfg.heuristicMax;
       const span = top - base;
       switch (displayMode) {
-        case "careful":
-          return base + span / BigInt(3);
-        case "challenge":
-          return top;
-        case "standard":
-        default:
-          return base + span / BigInt(2);
+        case "careful": return base + span / BigInt(3);
+        case "challenge": return top;
+        case "standard": default: return base + span / BigInt(2);
       }
     }
 
@@ -285,27 +185,21 @@
       const theoremMax = cfg.theoremMax;
       const heurMaxMode = getHeuristicMaxForMode(displayMode, cfg);
 
-      // proven ゾーン：素数判定OS（PG_δ）の δ_pos > 0 が保証されている範囲
       const provenEnd = maxX < theoremMax ? maxX : theoremMax;
       if (minX <= provenEnd) {
         segments.push({ start: minX, end: provenEnd, zone: "proven" });
       }
 
-      // heuristic ゾーン：OS 側が「理論的にはこの辺まで」と見積もる範囲
-      const heuristicStart =
-        minX > theoremMax + BigInt(1) ? minX : theoremMax + BigInt(1);
+      const heuristicStart = minX > theoremMax + BigInt(1) ? minX : theoremMax + BigInt(1);
       const heuristicEnd = maxX < heurMaxMode ? maxX : heurMaxMode;
       if (heuristicStart <= heuristicEnd && heurMaxMode > theoremMax) {
         segments.push({ start: heuristicStart, end: heuristicEnd, zone: "heuristic" });
       }
 
-      // unknown ゾーン：証明もヒューリスティックも保証しない範囲
-      const unknownStart =
-        minX > heurMaxMode + BigInt(1) ? minX : heurMaxMode + BigInt(1);
+      const unknownStart = minX > heurMaxMode + BigInt(1) ? minX : heurMaxMode + BigInt(1);
       if (unknownStart <= maxX) {
         segments.push({ start: unknownStart, end: maxX, zone: "unknown" });
       }
-
       return segments;
     }
 
@@ -323,47 +217,28 @@
       const hasHeuristic = segments.some((s) => s.zone === "heuristic");
       const hasUnknown = segments.some((s) => s.zone === "unknown");
 
-      if (hasProven && !hasHeuristic && !hasUnknown) {
-        return { label: "完全証明領域", style: "proven" };
-      }
-      if (hasProven) {
-        return { label: "混合領域 (証明+推定)", style: "mixed" };
-      }
-      if (hasHeuristic) {
-        return { label: "推定領域 (理論値)", style: "heuristic" };
-      }
+      if (hasProven && !hasHeuristic && !hasUnknown) return { label: "完全証明領域", style: "proven" };
+      if (hasProven) return { label: "混合領域 (証明+推定)", style: "mixed" };
+      if (hasHeuristic) return { label: "推定領域 (理論値)", style: "heuristic" };
       return { label: "未証明領域", style: "unknown" };
     }
 
-    // ==========================================
-    // 証明モニター全体の状態構築
-    // ==========================================
-
     function buildProofMonitorState(userMin, userMax, displayMode) {
       try {
-        const clean = (s) =>
-          String(s)
-            .replace(/[０-９,]/g, (c) =>
-              String.fromCharCode(c.charCodeAt(0) - 0xfee0)
-            )
-            .replace(/,/g, "");
+        const clean = (s) => String(s).replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/,/g, "");
         const minX = BigInt(clean(userMin) || 0);
         const maxX = BigInt(clean(userMax) || 0);
 
         if (maxX < minX) return null;
 
-        // ★ ここで素数判定OS（PG_δ / UWP）に問い合わせる
         const deltaInfo = computeDeltaPos(CERT_PARAMS);
-
-        // Σ1 ログとサマリーを構築
         const sigmaLog = buildSigma1Log(CERT_PARAMS, deltaInfo);
         const summary = buildCertificateSummary(CERT_PARAMS, deltaInfo);
 
-        // δ_pos ≤ 0 なら「証明ゾーン」を強制的にゼロにする（UIと数学の整合性確保）
         let localCfg = SAFE_RANGE_CONFIG;
         if (!deltaInfo.isPositive) {
           localCfg = {
-            theoremMax: BigInt(0), // 証明ゾーン消滅
+            theoremMax: BigInt(0), 
             heuristicMax: SAFE_RANGE_CONFIG.heuristicMax
           };
         }
@@ -399,7 +274,6 @@
       let d = n - BigInt(1);
       let s = BigInt(0);
       while (d % BigInt(2) === BigInt(0)) { d /= BigInt(2); s++; }
-      // ミラー・ラビン基数セット（n < 2^64 で決定論的に正しいセット）
       const bases = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
       for (let a of bases) {
         const aBig = BigInt(a);
@@ -464,7 +338,6 @@
         let isSafe = true;
         let reason = "";
 
-        // ※ OS側の「黙る」判定（ヒューリスティック）
         if (min > BigInt("9000000000000000") && entropy > 0.3) {
           isSafe = false;
           reason = "数が大きすぎて（1京付近）、量子のゆらぎが無視できないレベルに達しています。";
@@ -484,6 +357,186 @@
       }
     };
 
+    // ==========================================
+    // 区間を一つずつ数えて見せるカウンター
+    // （ユーザーが指定した区間に同期）
+    // ==========================================
+    function SlowPrimeCounter({ minVal, maxVal, runId }) {
+      const [state, setState] = React.useState({
+        active: false,
+        start: null,
+        current: null,
+        max: null,
+        count: 0,
+        done: false,
+        total: 0,
+        error: ""
+      });
+
+      // runId が増えたタイミングで、そのときの区間でカウンターをリセットして走らせる
+      React.useEffect(() => {
+        if (!runId) return;
+
+        const normalize = (s) =>
+          String(s)
+            .replace(/[０-９,]/g, (c) =>
+              String.fromCharCode(c.charCodeAt(0) - 0xfee0)
+            )
+            .replace(/,/g, "");
+
+        try {
+          const cleanMin = normalize(minVal);
+          const cleanMax = normalize(maxVal);
+
+          if (!/^\d+$/.test(cleanMin) || !/^\d+$/.test(cleanMax)) {
+            setState({
+              active: false,
+              start: null,
+              current: null,
+              max: null,
+              count: 0,
+              done: false,
+              total: 0,
+              error: "区間が読み取れません。"
+            });
+            return;
+          }
+
+          const minB = BigInt(cleanMin);
+          const maxB = BigInt(cleanMax);
+
+          if (maxB <= minB) {
+            setState({
+              active: false,
+              start: null,
+              current: null,
+              max: null,
+              count: 0,
+              done: false,
+              total: 0,
+              error: "「ここから」と「ここまで」の大小関係がおかしいです。"
+            });
+            return;
+          }
+
+          const WIDTH_LIMIT = BigInt(50000);
+          if (maxB - minB > WIDTH_LIMIT) {
+            setState({
+              active: false,
+              start: null,
+              current: null,
+              max: null,
+              count: 0,
+              done: false,
+              total: 0,
+              error: "ここでは幅5万以内の範囲だけを、1つずつ数えて見せています。"
+            });
+            return;
+          }
+
+          const total = Number(maxB - minB + BigInt(1));
+
+          setState({
+            active: true,
+            start: minB,
+            current: minB,
+            max: maxB,
+            count: 0,
+            done: false,
+            total,
+            error: ""
+          });
+        } catch (e) {
+          setState({
+            active: false,
+            start: null,
+            current: null,
+            max: null,
+            count: 0,
+            done: false,
+            total: 0,
+            error: "区間をうまく読み取れませんでした。"
+          });
+        }
+      }, [runId, minVal, maxVal]);
+
+      // 1つずつ素数判定して進めるループ
+      React.useEffect(() => {
+        if (!state.active) return;
+
+        const id = setInterval(() => {
+          setState((s) => {
+            if (!s.active || s.current === null || s.max === null) return s;
+            if (s.current > s.max) {
+              return { ...s, active: false, done: true };
+            }
+            const n = s.current;
+            const prime = isPrimeBigInt(n);
+            return {
+              ...s,
+              current: n + BigInt(1),
+              count: s.count + (prime ? 1 : 0)
+            };
+          });
+        }, 10); // ここで速さ調整（10msごとに1個進む）
+
+        return () => clearInterval(id);
+      }, [state.active]);
+
+      const progress = React.useMemo(() => {
+        if (!state.start || state.total <= 0) return 0;
+        const limit = state.max ? state.max + BigInt(1) : state.start;
+        const at =
+          state.current && state.current <= limit ? state.current : limit;
+        const done = at - state.start; // BigInt
+        return Math.min(100, (Number(done) / state.total) * 100);
+      }, [state.start, state.current, state.max, state.total]);
+
+      return (
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-8">
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">
+            ひとつずつ数えて確かめる
+          </h3>
+          <p className="text-xs text-slate-500 text-center mb-4">
+            さっき指定した区間で、素数を1つずつチェックしていく様子です。
+          </p>
+
+          {state.error ? (
+            <p className="text-xs text-red-500 text-center">{state.error}</p>
+          ) : (
+            <>
+              <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden mb-3">
+                <div
+                  className="h-2 bg-slate-400 transition-all"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-slate-500 mb-1">
+                <span>
+                  いま見ている数：
+                  <span className="font-mono text-slate-800 ml-1">
+                    {state.current ? state.current.toString() : "-"}
+                  </span>
+                </span>
+                <span>
+                  見つかった素数：
+                  <span className="font-mono text-emerald-600 ml-1">
+                    {state.count}
+                  </span>
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2 text-center">
+                {state.done
+                  ? "この範囲の素数をすべて数え終わりました。"
+                  : state.active
+                  ? "1つ1つチェックしながら進んでいます。"
+                  : "計算の準備をしています。"}
+              </p>
+            </>
+          )}
+        </div>
+      );
+    }
 
     // ==========================================
     // メインコンポーネント
@@ -495,7 +548,8 @@
       const [loading, setLoading] = useState(false);
       const [errorMsg, setErrorMsg] = useState("");
       const [displayMode, setDisplayMode] = useState("standard");
-      const [showMonitor, setShowMonitor] = useState(false); // モニターの表示切り替え
+      const [showMonitor, setShowMonitor] = useState(false); 
+      const [runId, setRunId] = useState(0); // ★ 追加：区間に同期するカウンター用
 
       const monitorState = useMemo(() => {
         return buildProofMonitorState(minVal, maxVal, displayMode);
@@ -518,7 +572,11 @@
         setTimeout(() => {
           const res = performCalculation(minVal, maxVal);
           if (res.error) { setErrorMsg(res.error); setResult(null); } 
-          else { setResult(res); }
+          else { 
+            setResult(res); 
+            // ★ このタイミングで runId を進める → SlowPrimeCounter がこの区間で走る
+            setRunId((id) => id + 1);
+          }
           setLoading(false);
         }, isInitial ? 300 : 700);
       };
@@ -641,6 +699,9 @@
                     </div>
                   </div>
                 )}
+
+                {/* ★ 追加：1つずつ数えるカウンター（スマホで縦並び） */}
+                <SlowPrimeCounter minVal={minVal} maxVal={maxVal} runId={runId} />
 
                 {/* 比較エリア */}
                 <div className="bg-white rounded-xl border border-slate-200 p-6 mb-12">
@@ -774,8 +835,8 @@
                            
                           {/* 数学者向け専門的注釈（理系高校3年〜向け） */}
                           <div className="mt-4 pt-3 border-t border-slate-900 text-[9px] text-slate-500 leading-relaxed font-mono">
-                            ※ このモニターは、「このあたりに素数がどのくらい詰まっているか」を表す
-                            グラフ Z(u) が、ある範囲で絶対に 0 より下がらないかどうかを
+                            ※ このモニターは、「このあたりに素数がどのくらい詰まっているか」を表す<br/>
+                            グラフ Z(u) が、ある範囲で絶対に 0 より下がらないかどうかを<br/>
                             チェックするための画面です。<br/>
                             <br/>
                             ・β·Z_min …… Z(u) の一番低いところの “安全な下限”<br/>
@@ -785,20 +846,20 @@
                             ここでは、次の 1 本の不等式だけを見ています：<br/>
                             &nbsp;&nbsp;δ_pos ≥ m_hat(Δ)·(β·Z_min − ε_total)<br/>
                             <br/>
-                            β·Z_min − ε_total が 0 より大きい ＝
-                            「主役（β·Z_min）が、誤差（ε_total）より必ず大きい」ので、
-                            平均的な素数の濃さはどこでも “正のまま” 保たれます。
-                            その結果、ある高さ H₀ までは、
-                            「長いあいだ素数が 1 個も出ない区間は起こらない」と
+                            β·Z_min − ε_total が 0 より大きい ＝<br/>
+                            「主役（β·Z_min）が、誤差（ε_total）より必ず大きい」ので、<br/>
+                            平均的な素数の濃さはどこでも “正のまま” 保たれます。<br/>
+                            その結果、ある高さ H₀ までは、<br/>
+                            「長いあいだ素数が 1 個も出ない区間は起こらない」と<br/>
                             まとめて保証できます。<br/>
                             <br/>
-                            H₀ や β, Z_min, 各誤差 c_i はすべて、
-                            有限個の零点表・素数表と積分の上界から計算した
-                            “あらかじめ固定された数表” になっていて、
-                            このモニターはその不等式を実際に計算して
+                            H₀ や β, Z_min, 各誤差 c_i はすべて、<br/>
+                            有限個の零点表・素数表と積分の上界から計算した<br/>
+                            “あらかじめ固定された数表” になっていて、<br/>
+                            このモニターはその不等式を実際に計算して<br/>
                             OK かどうかを表示しているだけです。<br/>
                             <br/>
-                            （おまけ）背景では、リーマン ζ 関数の −ζ'/ζ(s) から Z(u) を作っており、
+                            （おまけ）背景では、リーマン ζ 関数の −ζ'/ζ(s) から Z(u) を作っており、<br/>
                             ここはその結果だけを使う「OS側のチェック層」になっています。
                           </div>
                         </div>
@@ -864,4 +925,3 @@
   </script>
 </body>
 </html>
-
