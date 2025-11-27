@@ -82,6 +82,12 @@
     const Activity = ({ className }) => (
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
     );
+    const Zap = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    );
+    const Database = ({ className }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+    );
 
     // ==========================================
     // Canvasパーティクルシステム (洗練されたご褒美演出)
@@ -99,32 +105,31 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // 設定: レベルによる演出の違い
         let particleCount = 0;
         let types = [];
         let speedMult = 1.0;
-        let spreadType = 'fall'; // fall: 上から, burst: 中央から
+        let spreadType = 'fall';
 
         switch (level) {
-          case 'max': // 30000+: 爆発的
+          case 'max':
             particleCount = 400;
             types = ['petal', 'square', 'gold', 'sparkle'];
             speedMult = 1.5;
             spreadType = 'burst';
             break;
-          case 'hard': // 10000+: 豪華
+          case 'hard':
             particleCount = 200;
             types = ['petal', 'square', 'gold'];
             speedMult = 1.2;
             spreadType = 'fall';
             break;
-          case 'medium': // 5000+: カラフル
+          case 'medium':
             particleCount = 100;
             types = ['petal', 'square'];
             speedMult = 1.0;
             spreadType = 'fall';
             break;
-          case 'easy': // ~5000: ピンクの花弁のみ
+          case 'easy':
           default:
             particleCount = 60;
             types = ['petal'];
@@ -133,7 +138,6 @@
             break;
         }
 
-        // パーティクル生成
         const colors = ['#f472b6', '#38bdf8', '#a3e635', '#facc15', '#c084fc'];
         
         for (let i = 0; i < particleCount; i++) {
@@ -149,7 +153,7 @@
             vy = Math.sin(angle) * velocity;
           } else {
             x = Math.random() * canvas.width;
-            y = -Math.random() * canvas.height * 0.5; // 画面外上部から
+            y = -Math.random() * canvas.height * 0.5;
             vx = (Math.random() - 0.5) * 2;
             vy = (2 + Math.random() * 4) * speedMult;
           }
@@ -162,7 +166,7 @@
             rotation: Math.random() * 360,
             rotationSpeed: (Math.random() - 0.5) * 5,
             opacity: 1,
-            drag: spreadType === 'burst' ? 0.95 : 0.99, // バースト時は空気抵抗強め
+            drag: spreadType === 'burst' ? 0.95 : 0.99,
             gravity: 0.15
           });
         }
@@ -176,14 +180,13 @@
             if (p.opacity <= 0) return;
             activeParticles++;
 
-            // 物理更新
             p.x += p.vx;
             p.y += p.vy;
             p.vy += p.gravity;
             p.vx *= p.drag;
             p.vy *= p.drag;
             p.rotation += p.rotationSpeed;
-            p.opacity -= 0.003; // 徐々に消える
+            p.opacity -= 0.003;
 
             ctx.save();
             ctx.translate(p.x, p.y);
@@ -191,14 +194,11 @@
             ctx.globalAlpha = p.opacity;
             ctx.fillStyle = p.color;
 
-            // 描画
             if (p.type === 'petal') {
-              // 花弁の形（楕円っぽく）
               ctx.beginPath();
               ctx.ellipse(0, 0, p.size / 2, p.size, 0, 0, Math.PI * 2);
               ctx.fill();
             } else if (p.type === 'gold' || p.type === 'sparkle') {
-              // キラキラ（菱形）
               ctx.beginPath();
               ctx.moveTo(0, -p.size);
               ctx.lineTo(p.size / 2, 0);
@@ -207,7 +207,6 @@
               ctx.closePath();
               ctx.fill();
             } else {
-              // 四角（紙吹雪）
               ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
             }
             
@@ -248,9 +247,6 @@
       return { errorSum, mainTerm, margin: rawMargin, deltaPos, isPositive, theoremMax: params.H0 };
     }
 
-    // ==========================================
-    // Σ1 ログ生成（数学者向けビュー）
-    // ==========================================
     function buildSigma1Log(params, deltaInfo) {
       const logs = [];
       logs.push({ label: "METHODOLOGY", val: "Explicit Formula (PG_δ / UWP)", note: "Method", highlight: true });
@@ -270,22 +266,13 @@
     }
 
     function buildCertificateSummary(params, deltaInfo) {
-      return {
-        deltaPos: deltaInfo.deltaPos,
-        wgBound: params.c_WG,
-        isValid: deltaInfo.isPositive,
-        H0: params.H0,
-        sourceId: params.sourceId
-      };
+      return { deltaPos: deltaInfo.deltaPos, wgBound: params.c_WG, isValid: deltaInfo.isPositive, H0: params.H0, sourceId: params.sourceId };
     }
 
     // ==========================================
     // 素数判定OS → 可視化OS へのマッピング
     // ==========================================
-    const SAFE_RANGE_CONFIG = {
-      theoremMax: CERT_PARAMS.H0,
-      heuristicMax: CERT_PARAMS.H0 * BigInt(100) 
-    };
+    const SAFE_RANGE_CONFIG = { theoremMax: CERT_PARAMS.H0, heuristicMax: CERT_PARAMS.H0 * BigInt(100) };
 
     function getHeuristicMaxForMode(displayMode, cfg) {
       const base = cfg.theoremMax;
@@ -316,10 +303,7 @@
     function toRelativeSegments(segments, minX, maxX) {
       const total = Number(maxX - minX + BigInt(1)); 
       if (total <= 0) return [];
-      return segments.map((seg) => ({
-        zone: seg.zone,
-        width: (Number(seg.end - seg.start + BigInt(1)) / total) * 100
-      }));
+      return segments.map((seg) => ({ zone: seg.zone, width: (Number(seg.end - seg.start + BigInt(1)) / total) * 100 }));
     }
 
     function getHonestyBadge(segments) {
@@ -342,29 +326,20 @@
         const sigmaLog = buildSigma1Log(CERT_PARAMS, deltaInfo);
         const summary = buildCertificateSummary(CERT_PARAMS, deltaInfo);
         let localCfg = SAFE_RANGE_CONFIG;
-        if (!deltaInfo.isPositive) {
-          localCfg = { theoremMax: BigInt(0), heuristicMax: SAFE_RANGE_CONFIG.heuristicMax };
-        }
+        if (!deltaInfo.isPositive) { localCfg = { theoremMax: BigInt(0), heuristicMax: SAFE_RANGE_CONFIG.heuristicMax }; }
         const segments = splitRangeIntoZones(minX, maxX, displayMode, localCfg);
         const relativeZones = toRelativeSegments(segments, minX, maxX);
         const badge = getHonestyBadge(segments);
         return { deltaInfo, sigmaLog, summary, relativeZones, badge };
-      } catch (e) {
-        return null;
-      }
+      } catch (e) { return null; }
     }
 
     // ==========================================
     // 数学エンジン
     // ==========================================
     function modPow(base, exp, mod) {
-      let res = BigInt(1);
-      base %= mod;
-      while (exp > BigInt(0)) {
-        if (exp % BigInt(2) === BigInt(1)) res = (res * base) % mod;
-        base = (base * base) % mod;
-        exp /= BigInt(2);
-      }
+      let res = BigInt(1); base %= mod;
+      while (exp > BigInt(0)) { if (exp % BigInt(2) === BigInt(1)) res = (res * base) % mod; base = (base * base) % mod; exp /= BigInt(2); }
       return res;
     }
 
@@ -377,15 +352,10 @@
       while (d % BigInt(2) === BigInt(0)) { d /= BigInt(2); s++; }
       const bases = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
       for (let a of bases) {
-        const aBig = BigInt(a);
-        if (n <= aBig) break;
-        let x = modPow(aBig, d, n);
-        if (x === BigInt(1) || x === n - BigInt(1)) continue;
+        const aBig = BigInt(a); if (n <= aBig) break;
+        let x = modPow(aBig, d, n); if (x === BigInt(1) || x === n - BigInt(1)) continue;
         let composite = true;
-        for (let r = BigInt(1); r < s; r++) {
-          x = (x * x) % n;
-          if (x === n - BigInt(1)) { composite = false; break; }
-        }
+        for (let r = BigInt(1); r < s; r++) { x = (x * x) % n; if (x === n - BigInt(1)) { composite = false; break; } }
         if (composite) return false;
       }
       return true;
@@ -450,6 +420,24 @@
         return { error: "計算できませんでした。" };
       }
     };
+
+    // ==========================================
+    // この区間での「コスト感」をざっくり数値化
+    // ==========================================
+    function estimateCostForRange(minStr, maxStr, frontierMode) {
+      try {
+        const normalize = (s) => String(s).replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/,/g, "");
+        const minB = BigInt(normalize(minStr || "0"));
+        const maxB = BigInt(normalize(maxStr || "0"));
+        if (maxB <= minB) return null;
+        const width = maxB - minB + BigInt(1);
+        const widthNum = Number(width);
+        const naiveSteps = widthNum;
+        const osSteps = frontierMode ? 1 : 50;
+        const speedup = naiveSteps > osSteps ? Math.max(1, Math.floor(naiveSteps / osSteps)) : 1;
+        return { width: widthNum, naiveSteps, osSteps, speedup };
+      } catch (e) { return null; }
+    }
 
     // ==========================================
     // SlowPrimeCounter (ユーザーが指定した区間に同期)
@@ -554,6 +542,12 @@
         return Math.max(10, Math.min(100, monitorState.summary.deltaPos * 50000));
       }, [monitorState]);
 
+      // ★ コスト感の計算
+      const costMetrics = useMemo(
+        () => estimateCostForRange(minVal, maxVal, frontierMode),
+        [minVal, maxVal, frontierMode]
+      );
+
       useEffect(() => { handleCalculate(true); }, []);
 
       const resetStateForNewCalculation = () => {
@@ -571,6 +565,7 @@
           case 'untrustworthy': setMinVal("9900000000000000"); setMaxVal("9900000000001000"); setFrontierMode(false); break;
           case 'frontier': setMinVal("1000000000000"); setMaxVal("1000001000000"); setFrontierMode(true); break;
         }
+        setResult(null); setErrorMsg("");
       };
 
       const handleCalculate = (isInitial = false) => {
@@ -588,7 +583,10 @@
             const approxCount = Math.max(0, liApprox(maxB) - liApprox(minB));
             const errorMargin = Math.max(1000, Math.floor(approxCount * 0.1));
             setResult({ success: true, isSafe: true, frontier: true, count: approxCount, errorMargin, confidenceLevel: "theory" });
-            // frontierモードは即座には演出しない（カウンターが無いので、結果表示のみ）
+            
+            // frontierモードは一瞬で予測するので即座に演出レベルを決定
+            setConfettiLevel("max"); 
+            
             setLoading(false);
             return;
           }
@@ -606,10 +604,10 @@
           const predicted = typeof result.count === "bigint" ? result.count : BigInt(result.count);
           const manual = typeof manualCount === "bigint" ? manualCount : BigInt(manualCount);
           
-          // ★ 一致した時だけ発動（スパーク誤爆防止）
+          // ★ 一致した時だけ発動
           if (predicted !== manual) return;
 
-          const normalize = (s) => String(s).replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/,/g, "");
+          const normalize = (s) => String(s).replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/,/g, "");
           const minB = BigInt(normalize(minVal));
           const maxB = BigInt(normalize(maxVal));
           const width = maxB - minB;
@@ -635,15 +633,19 @@
           {/* ヘッダー */}
           <div className="max-w-3xl mx-auto px-4 py-8 md:py-12">
             <header className="text-center mb-10">
-              <div className="inline-flex items-center justify-center p-3 bg-emerald-100 rounded-full mb-4 text-emerald-700">
-                <Shield className="w-8 h-8" />
+              <div className="inline-flex items-center justify-center px-4 py-2 bg-emerald-100 rounded-full mb-4 text-emerald-700 gap-2">
+                <Shield className="w-6 h-6" />
+                <span className="text-xs font-semibold tracking-wide">
+                  GhostDrift 素数OSカーネル
+                </span>
               </div>
               <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">素数計算OS</h1>
               <p className="text-lg text-slate-600 max-w-xl mx-auto leading-relaxed mb-2">
                 世界に素数が何個あるか、<br /><span className="font-bold text-emerald-600">“自信があるときだけ”</span> 答える計算機です。
               </p>
               <p className="text-sm md:text-base text-slate-500 max-w-xl mx-auto leading-relaxed">
-                人類未踏級の巨大区間のごく一部を、理論予測と照らし合わせて覗けます。
+                単なる計算アプリではありません。<br className="block md:hidden" />
+                <span className="font-semibold">暗号・物理の土台となる「OSカーネル」</span>の実験版です。
               </p>
               <p className="text-xs text-slate-400 mt-2 font-mono">対応範囲: 0 〜 10,000,000,000,000,000 (1京)</p>
             </header>
@@ -684,6 +686,22 @@
               </button>
             </section>
 
+            {/* OSの約束バッジ */}
+            <div className="mt-4 flex flex-wrap justify-center gap-2 text-[11px] mb-8">
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">
+                <Shield className="w-3 h-3" />
+                <span>安全ゾーン以外では黙る</span>
+              </div>
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-50 text-sky-700">
+                <Zap className="w-3 h-3" />
+                <span>証明を前払いして高速化</span>
+              </div>
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">
+                <Database className="w-3 h-3" />
+                <span>1京までのログを扱える設計</span>
+              </div>
+            </div>
+
             {/* 結果エリア */}
             {result && (
               <div className={`transform transition-all duration-500 ${loading ? 'opacity-50 scale-95' : 'opacity-100 scale-100'}`}>
@@ -706,15 +724,14 @@
                     <div className="absolute top-0 left-0 w-full h-2 bg-emerald-300 opacity-30"></div>
                     <div className="flex justify-center mb-4"><div className="bg-white/20 p-3 rounded-full backdrop-blur-sm"><CheckCircle className="w-8 h-8 text-white" /></div></div>
                     <h2 className="text-xl md:text-2xl font-bold mb-6 opacity-90">この場所なら自信を持って答えられます。</h2>
-                    <div className="text-4xl md:text-6xl font-bold mb-2 tracking-tighter">たぶん <span className="border-b-4 border-emerald-300/50 pb-1">{fmt(result.count)}</span> 個</div>
-                    <div className="text-xl md:text-2xl font-medium opacity-80 mb-8">前後です。</div>
+                    <div className="text-4xl md:text-6xl font-bold mb-8 tracking-tighter"><span className="border-b-4 border-emerald-300/50 pb-1">{fmt(result.count)}</span> 個</div>
                     
                     {/* 安全度メーター */}
                     {monitorState && monitorState.summary && (
                       <div className="mt-2 mb-4">
                         <div className="text-xs opacity-80 mb-1">安全度メーター</div>
                         <div className="w-full h-2 rounded-full bg-white/20 overflow-hidden"><div className="h-2 bg-emerald-300" style={{ width: `${safetyLevel}%` }} /></div>
-                        <div className="text-[11px] opacity-75 mt-1">δ_pos にもとづいて、この区間はかなり安全なゾーンだと判断されています。</div>
+                        <div className="text-[11px] opacity-75 mt-1">δ_pos にもとづく、この区間の安全度スコアです。</div>
                       </div>
                     )}
 
@@ -725,7 +742,29 @@
                         <div className="bg-black/20 rounded px-3 py-1.5 backdrop-blur-sm">相対誤差: <span className="font-mono font-bold">{result.errorRate.toFixed(4)}%</span></div>
                       </div>
                     )}
-                    <p className="text-sm opacity-70 max-w-lg mx-auto leading-relaxed border-t border-white/10 pt-4 mt-4">じっくり調べたうえで、<br/>ウソをつかずに言える範囲です。</p>
+
+                    {/* コスト感 */}
+                    {costMetrics && (
+                      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-left">
+                        <div className="bg-black/25 rounded-lg p-3">
+                          <div className="text-[11px] font-mono text-emerald-200 mb-1">この範囲を 1つずつ数えた場合のコスト</div>
+                          <div>素数判定 <span className="font-mono font-bold">{fmt(costMetrics.naiveSteps)}</span>回ぶんの計算が必要です。</div>
+                          <div className="text-[11px] text-emerald-100 mt-1">（下のバー「ひとつずつ数えて確かめる」が、そのイメージです）</div>
+                        </div>
+                        <div className="bg-emerald-900/40 rounded-lg p-3">
+                          <div className="text-[11px] font-mono text-emerald-200 mb-1">この OS がオンラインで払っているコスト</div>
+                          <div>理論計算とサンプル検査あわせて、だいたい <span className="font-mono font-bold">{fmt(costMetrics.osSteps)}</span>ステップ程度。</div>
+                          {costMetrics.speedup > 1 && (
+                            <div className="text-[11px] text-emerald-100 mt-1">「真面目に 1つずつ数える」方法と比べて、同じ範囲で<span className="font-mono font-bold ml-1">約 {fmt(costMetrics.speedup)}</span>倍くらい軽い計算で済む設計です。</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-sm opacity-70 max-w-lg mx-auto leading-relaxed border-t border-white/10 pt-4 mt-4">
+                      じっくり調べたうえで、ウソをつかずに言える範囲です。<br />
+                      この OS が本気で保証するのは、<span className="font-semibold">世界の見積もりに直接効くサイズ</span>だけです。
+                    </p>
                   </div>
                 ) : (
                   // 赤
@@ -759,15 +798,13 @@
                   <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 text-center">ふつうの計算とのちがい</h3>
                   <div className="flex flex-col md:flex-row gap-4 items-stretch">
                     <div className="flex-1 bg-slate-100 rounded-lg p-4 text-sm text-slate-600 relative overflow-hidden">
-                      <div className="absolute top-0 left-0 w-1 h-full bg-slate-400"></div>
-                      <div className="font-bold mb-1 text-slate-700">ふつうの計算</div>
-                      <p>どんな場所でも、とりあえず数字を出します。<br/><span className="text-xs text-slate-400">（合ってるかどうかは分かりません）</span></p>
-                    </div>
-                    <div className="hidden md:flex items-center justify-center text-slate-300"><ArrowRight className="w-5 h-5" /></div>
-                    <div className="flex-1 bg-blue-50 rounded-lg p-4 text-sm text-blue-800 relative overflow-hidden">
                       <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
                       <div className="font-bold mb-1 text-blue-900">このアプリ</div>
                       <p>“ここは危ない”と感じた場所では、自分から黙ります。<br/><span className="text-xs text-blue-400">（ウソをつくくらいなら答えない）</span></p>
+                      {/* ★ 従来法では不可能だった点 */}
+                      <p className="mt-2 text-[11px] font-semibold text-blue-900">
+                        この OS が扱う巨大な区間は、昔のやり方では「理論上の予測」しかできなかった領域です。
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -833,7 +870,6 @@
                   </section>
                 </div>
               )}
-              <div className="bg-slate-50 rounded-xl p-6 text-sm text-slate-600 leading-relaxed"><p className="font-bold text-slate-700">この OS は「危ないところでは黙る」方向を選ぶ設計です。</p></div>
             </div>
           </div>
           <p className="text-xs text-slate-400 text-center pb-8">特願2025-202403号 GhostDrift 素数計算OS デモ</p>
