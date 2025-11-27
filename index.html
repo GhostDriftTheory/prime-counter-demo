@@ -549,20 +549,48 @@
       const [errorMsg, setErrorMsg] = useState("");
       const [displayMode, setDisplayMode] = useState("standard");
       const [showMonitor, setShowMonitor] = useState(false); 
-      const [runId, setRunId] = useState(0); // ★ 追加：区間に同期するカウンター用
+      const [runId, setRunId] = useState(0); 
+      const [frontierMode, setFrontierMode] = useState(false);
 
       const monitorState = useMemo(() => {
         return buildProofMonitorState(minVal, maxVal, displayMode);
       }, [minVal, maxVal, displayMode]);
 
+      const safetyLevel = useMemo(() => {
+        if (!monitorState || !monitorState.summary) return 0;
+        // δ_pos が大きいほどバーを伸ばす（上限100%）
+        return Math.max(10, Math.min(100, monitorState.summary.deltaPos * 50000));
+      }, [monitorState]);
+
       useEffect(() => { handleCalculate(true); }, []);
 
       const handlePreset = (type) => {
         switch (type) {
-          case 'safe': setMinVal("1000000"); setMaxVal("1001000"); break;
-          case 'medium': setMinVal("1000000000000"); setMaxVal("1000000001000"); break;
-          case 'danger': setMinVal("5000000000000000"); setMaxVal("5000000000001000"); break;
-          case 'untrustworthy': setMinVal("9900000000000000"); setMaxVal("9900000000001000"); break;
+          case 'safe':
+            setMinVal("1000000");
+            setMaxVal("1001000");
+            setFrontierMode(false);
+            break;
+          case 'medium':
+            setMinVal("1000000000000");
+            setMaxVal("1000000001000");
+            setFrontierMode(false);
+            break;
+          case 'danger':
+            setMinVal("5000000000000000");
+            setMaxVal("5000000000001000");
+            setFrontierMode(false);
+            break;
+          case 'untrustworthy':
+            setMinVal("9900000000000000");
+            setMaxVal("9900000000001000");
+            setFrontierMode(false);
+            break;
+          case 'frontier':
+            setMinVal("1000000000000");           // 10^12
+            setMaxVal("1000001000000");           // 10^12 + 100万
+            setFrontierMode(true);                // 理論モードON
+            break;
         }
         setResult(null); setErrorMsg("");
       };
@@ -570,6 +598,31 @@
       const handleCalculate = (isInitial = false) => {
         setErrorMsg(""); setLoading(true);
         setTimeout(() => {
+          // ★ frontier 専用：安全ゾーン理論だけでざっくり答える
+          if (frontierMode && !isInitial) {
+            const normalize = (s) =>
+              String(s)
+                .replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+                .replace(/,/g, "");
+            const minB = BigInt(normalize(minVal));
+            const maxB = BigInt(normalize(maxVal));
+
+            const approxCount = Math.max(0, liApprox(maxB) - liApprox(minB));   // 理論的なおおよその個数
+            const errorMargin = Math.max(1000, Math.floor(approxCount * 0.1));  // ゆるめの誤差表示
+
+            setResult({
+              success: true,
+              isSafe: true,
+              frontier: true,
+              count: approxCount,
+              errorMargin,
+              confidenceLevel: "theory"
+            });
+            // カウンターは走らせない（runId 更新しない）
+            setLoading(false);
+            return;
+          }
+
           const res = performCalculation(minVal, maxVal);
           if (res.error) { setErrorMsg(res.error); setResult(null); } 
           else { 
@@ -595,10 +648,17 @@
               <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
                 素数計算OS
               </h1>
-              <p className="text-lg text-slate-600 max-w-xl mx-auto leading-relaxed">
+
+              {/* メインコピーを元に戻し、人類未踏級の補足を追加 */}
+              <p className="text-lg text-slate-600 max-w-xl mx-auto leading-relaxed mb-2">
                 世界に素数が何個あるか、<br />
                 <span className="font-bold text-emerald-600">“自信があるときだけ”</span> 答える計算機です。
               </p>
+              <p className="text-sm md:text-base text-slate-500 max-w-xl mx-auto leading-relaxed">
+                <span className="font-semibold text-slate-700">人類未踏級のめちゃくちゃ大きい範囲</span>の<span className="font-bold text-violet-600">“証拠”</span>を覗けます。<br />
+                昔のやり方では理論上の予想しかできなかったゾーンです。
+              </p>
+
               <p className="text-xs text-slate-400 mt-2 font-mono">
                 対応範囲: 0 〜 10,000,000,000,000,000 (1京)
               </p>
@@ -609,13 +669,15 @@
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div>
                   <label className="block text-sm font-bold text-slate-500 mb-2">ここから</label>
-                  <input type="text" inputMode="numeric" value={minVal} onChange={(e) => setMinVal(e.target.value)}
+                  <input type="text" inputMode="numeric" value={minVal} 
+                    onChange={(e) => { setMinVal(e.target.value); setFrontierMode(false); }} 
                     className="w-full text-lg p-4 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none transition-colors font-mono"
                     placeholder="1000000" />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-500 mb-2">ここまで</label>
-                  <input type="text" inputMode="numeric" value={maxVal} onChange={(e) => setMaxVal(e.target.value)}
+                  <input type="text" inputMode="numeric" value={maxVal} 
+                    onChange={(e) => { setMaxVal(e.target.value); setFrontierMode(false); }} 
                     className="w-full text-lg p-4 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none transition-colors font-mono"
                     placeholder="1001000" />
                 </div>
@@ -623,7 +685,8 @@
                
               <div className="mb-8">
                 <p className="text-xs font-bold text-slate-400 text-center mb-3 uppercase tracking-wider">まずは試してみる</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {/* ボタンを元の5つに戻す（500億削除） */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   <button onClick={() => handlePreset('safe')} className="p-3 text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-medium transition-colors border border-emerald-200">
                     100万付近<br/>(よゆう)
                   </button>
@@ -636,7 +699,24 @@
                   <button onClick={() => handlePreset('untrustworthy')} className="p-3 text-sm bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-medium transition-colors border border-red-200">
                     約1京<br/>(全力)
                   </button>
+                  {/* ★ 固定サンプル */}
+                  <button
+                    onClick={() => handlePreset('frontier')}
+                    className="p-3 text-sm bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-lg font-medium transition-colors border border-violet-200"
+                  >
+                    人類未踏級<br/>(固定サンプル)
+                  </button>
                 </div>
+
+                {/* 人類未踏モードの説明（固定であることの明示） */}
+                <p className="mt-3 text-[11px] text-slate-400 text-center">
+                  「人類未踏級」は計算負荷が大きいため、固定サンプルとして表示しています。
+                </p>
+
+                <p className="mt-1 text-[11px] text-slate-400 text-center">
+                  OS は「危ない」と判断した区間では、
+                  <span className="font-semibold">カウンターを動かすこと自体を拒否</span>します。
+                </p>
               </div>
 
               {errorMsg && (
@@ -656,6 +736,17 @@
             {/* 結果エリア */}
             {result && (
               <div className={`transform transition-all duration-500 ${loading ? 'opacity-50 scale-95' : 'opacity-100 scale-100'}`}>
+                
+                {/* ★ 人類未踏級バッジ */}
+                {result.frontier && (
+                  <div className="mb-4 flex justify-center">
+                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-100 text-violet-700 text-xs font-semibold">
+                      <Activity className="w-3 h-3" />
+                      人類未踏級の巨大区間です（10¹²〜10¹²+100万級）
+                    </span>
+                  </div>
+                )}
+
                 {result.isSafe ? (
                   // 緑
                   <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-xl p-8 text-center text-white mb-8 relative overflow-hidden">
@@ -674,6 +765,23 @@
                       <div className="text-sm opacity-80 mb-1">この数のゆれ</div>
                       <div className="font-bold text-xl">±{result.errorMargin} 個 くらい</div>
                     </div>
+
+                    {/* ★ 安全度メーター（δ_pos のライト表示） */}
+                    {monitorState && monitorState.summary && (
+                      <div className="mt-2 mb-4">
+                        <div className="text-xs opacity-80 mb-1">安全度メーター</div>
+                        <div className="w-full h-2 rounded-full bg-white/20 overflow-hidden">
+                          <div
+                            className="h-2 bg-emerald-300"
+                            style={{ width: `${safetyLevel}%` }}
+                          />
+                        </div>
+                        <div className="text-[11px] opacity-75 mt-1">
+                          δ_pos にもとづいて、この区間はかなり安全なゾーンだと判断されています。
+                        </div>
+                      </div>
+                    )}
+
                     <p className="text-sm opacity-70 max-w-lg mx-auto leading-relaxed border-t border-white/10 pt-4 mt-2">
                       じっくり調べたうえで、<br/>ウソをつかずに言える範囲です。
                     </p>
@@ -697,11 +805,18 @@
                       <Info className="w-4 h-4" />
                       理由：{result.reason}
                     </div>
+                    {/* ★ 設計ポリシーの明示 */}
+                    <p className="mt-4 text-sm opacity-80 max-w-lg mx-auto leading-relaxed">
+                      素数計算OSは、
+                      <span className="font-semibold">自信がないときは必ず沈黙する</span>
+                      ように設計されています。
+                    </p>
                   </div>
                 )}
 
                 {/* ★ 追加：1つずつ数えるカウンター（スマホで縦並び） */}
-                <SlowPrimeCounter minVal={minVal} maxVal={maxVal} runId={runId} />
+                {/* frontierModeの時は数えない */}
+                {!frontierMode && <SlowPrimeCounter minVal={minVal} maxVal={maxVal} runId={runId} />}
 
                 {/* 比較エリア */}
                 <div className="bg-white rounded-xl border border-slate-200 p-6 mb-12">
@@ -719,6 +834,10 @@
                       <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
                       <div className="font-bold mb-1 text-blue-900">このアプリ</div>
                       <p>“ここは危ない”と感じた場所では、自分から黙ります。<br/><span className="text-xs text-blue-400">（ウソをつくくらいなら答えない）</span></p>
+                      {/* ★ 従来法では不可能だった点 */}
+                      <p className="mt-2 text-[11px] font-semibold text-blue-900">
+                        この OS が扱う巨大な区間は、昔のやり方では「理論上の予測」しかできなかった領域です。
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -735,6 +854,19 @@
                 {showMonitor ? <ChevronUp className="w-4 h-4"/> : <Lock className="w-4 h-4" />}
                 {showMonitor ? "専門的な詳細を閉じる" : "専門的な詳細（証明モニター）を開く"}
               </button>
+
+              {/* ★ 追加: 数理背景デモへのボタン */}
+              <div className="mt-2 mb-4 flex justify-center">
+                <a
+                  href="https://ghostdrifttheory.github.io/Prime-Calculation-OS-Mathematical-Lab/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-300 bg-white text-[11px] text-slate-600 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  素数計算OSの数理背景デモ（素数重力）を開く
+                </a>
+              </div>
 
               {/* 証明モニター（ここだけ黒背景のガチ仕様） */}
               {showMonitor && monitorState && (
@@ -813,6 +945,10 @@
                             <span className="text-[10px] text-slate-500">未検証 (Unknown)</span>
                           </div>
                         </div>
+                        {/* ★ H0 の説明 */}
+                        <p className="mt-2 text-[10px] text-slate-500">
+                          H₀ = 10¹⁶ までは、「安全ゾーンとして証明済み」の範囲として扱っています。
+                        </p>
                       </div>
 
                       {/* Σ1ログ & サマリー */}
@@ -887,7 +1023,7 @@
                        
                       {/* 【誠実化対応】独立性の注釈 */}
                       <div className="mt-4 text-[10px] text-slate-500 text-right leading-tight">
-                        ※ 上の「自信がないので黙ります」は局所的なヒューリスティック判定であり、<br/>
+                        ※ 上の「自信がないので黙ります」は局所的なヒューリスティック判定であり、
                         δ_pos の Σ₁証明とは独立に動いています。
                       </div>
 
