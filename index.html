@@ -36,7 +36,7 @@
       pointer-events: none;
       position: fixed;
       inset: 0;
-      z-index: 40;
+      z-index: 9999; /* 最前面へ */
       overflow: hidden;
     }
     .petal {
@@ -68,23 +68,25 @@
       pointer-events: none;
       position: fixed;
       inset: 0;
-      z-index: 50;
+      z-index: 9998; /* 花びらの次くらいに前面 */
       overflow: hidden;
     }
     .spark-line {
       position: absolute;
       left: -30%;
       height: 2px;
+      /* 視認性アップのため不透明度を上げる */
       background: linear-gradient(
         to right,
         rgba(129, 140, 248, 0),
-        rgba(129, 140, 248, 0.9),
+        rgba(129, 140, 248, 1),
         rgba(129, 140, 248, 0)
       );
       opacity: 0;
       animation-name: spark-move;
       animation-timing-function: linear;
       animation-fill-mode: forwards;
+      filter: blur(0.5px); /* 光ってる感を出す */
     }
     @keyframes spark-move {
       0% {
@@ -142,7 +144,7 @@
     );
 
     // ==========================================
-    // 予測値＝カウンター一致時の花びら演出
+    // 予測値＝カウンター一致時の花びら演出（超強化版）
     // ==========================================
     function PetalBurst({ level, onEnd }) {
       const [petals, setPetals] = useState([]);
@@ -150,36 +152,39 @@
       useEffect(() => {
         if (!level) return;
 
-        // ★ レベルごとに枚数・時間・大きさをだいぶ差をつける
+        // ★ レベルごとに「やりすぎ気味」の枚数
         const count =
-          level === "max" ? 180 :
-          level === "hard" ? 120 :
-          level === "medium" ? 80 :
-          45; // easy（幅〜5000）
+          level === "max" ? 320 :      // 3万以上
+          level === "hard" ? 260 :     // 1万〜3万未満
+          level === "medium" ? 200 :   // 5000〜1万未満
+          140;                         // easy（〜1000〜5000）
 
+        // ★ 全体がしっかり見えるだけの時間
         const durationBase =
-          level === "max" ? 7.0 :
-          level === "hard" ? 6.2 :
-          level === "medium" ? 5.5 :
+          level === "max" ? 8.0 :
+          level === "hard" ? 7.0 :
+          level === "medium" ? 6.0 :
           5.0;
 
+        // ★ 落ち始めのばらつき（同時にドバッと＋少しズラす）
         const delayMax =
-          level === "max" ? 0.9 :
-          level === "hard" ? 1.1 :
-          level === "medium" ? 1.3 :
-          1.5;
+          level === "max" ? 1.2 :
+          level === "hard" ? 1.0 :
+          level === "medium" ? 0.8 :
+          0.6;
 
+        // ★ 画面でちゃんと見えるサイズ帯
         const sizeBase =
-          level === "max" ? 22 :
-          level === "hard" ? 18 :
-          level === "medium" ? 15 :
-          13;
+          level === "max" ? 28 :
+          level === "hard" ? 24 :
+          level === "medium" ? 22 :
+          20;
 
         const generated = Array.from({ length: count }).map((_, i) => {
           const startX = Math.random() * 100; // 0〜100vw
           const duration = durationBase + Math.random() * 2;
           const delay = Math.random() * delayMax;
-          const size = sizeBase + Math.random() * 6;
+          const size = sizeBase + Math.random() * 8;
 
           return { id: i, startX, duration, delay, size };
         });
@@ -207,7 +212,7 @@
                 animationDuration: `${p.duration}s`,
                 animationDelay: `${p.delay}s`,
                 width: `${p.size}px`,
-                height: `${p.size * 1.3}px`
+                height: `${p.size * 1.4}px`
               }}
             />
           ))}
@@ -216,7 +221,7 @@
     }
 
     // ==========================================
-    // 素数定理による高速予測のスパーク演出
+    // 素数定理による高速予測のスパーク演出（超強化版）
     // （frontierモードなど「理論だけで先に形を見る」とき用）
     // ==========================================
     function SpeedSpark({ active, mode, onEnd }) {
@@ -225,16 +230,18 @@
       useEffect(() => {
         if (!active) return;
 
-        // ★ 少し演出を強化
-        const count = mode === "frontier" ? 24 : 16;
-        const durationBase = mode === "frontier" ? 1.6 : 1.8;
+        // ★ 本数をかなり増やす
+        const count = mode === "frontier" ? 40 : 28;
+
+        // ★ 画面にしっかり残る時間
+        const durationBase = mode === "frontier" ? 2.0 : 2.2;
 
         const generated = Array.from({ length: count }).map((_, i) => {
-          const top = 20 + Math.random() * 40; // 画面の中段あたり中心
+          const top = 25 + Math.random() * 35; // 画面のど真ん中〜やや上下
           const delay =
-            mode === "frontier" ? Math.random() * 0.45 : Math.random() * 0.6;
-          const duration = durationBase + Math.random() * 0.5;
-          const thickness = mode === "frontier" ? 5 + Math.random() * 2 : 4;
+            mode === "frontier" ? Math.random() * 0.7 : Math.random() * 0.9;
+          const duration = durationBase + Math.random() * 0.8;
+          const thickness = mode === "frontier" ? 8 + Math.random() * 3 : 6;
 
           return {
             id: i,
@@ -252,7 +259,7 @@
         );
         const timer = setTimeout(() => {
           if (onEnd) onEnd();
-        }, (maxT + 0.3) * 1000);
+        }, (maxT + 0.5) * 1000);
 
         return () => clearTimeout(timer);
       }, [active, mode, onEnd]);
@@ -703,7 +710,7 @@
               count: s.count + (prime ? 1 : 0)
             };
           });
-        }, 5); // ここで速さ調整（5msごとに1個進む）
+        }, 1); // 1msごとに変更して超高速化
 
         return () => clearInterval(id);
       }, [state.active]);
