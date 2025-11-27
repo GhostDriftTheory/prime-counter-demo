@@ -19,87 +19,27 @@
     .cursor-wait {
       cursor: wait;
     }
-    /* スクロールバーのカスタマイズ（コンソール用） */
+    /* スクロールバーのカスタマイズ */
     .math-log::-webkit-scrollbar {
       width: 6px;
     }
     .math-log::-webkit-scrollbar-track {
-      background: #0f172a; /* slate-950 */
+      background: #0f172a;
     }
     .math-log::-webkit-scrollbar-thumb {
-      background: #334155; /* slate-700 */
+      background: #334155;
       border-radius: 3px;
     }
 
-    /* 花びらアニメーション（予測とカウンター一致時のご褒美演出） */
-    .petal-layer {
-      pointer-events: none;
+    /* キャンバス用（最前面） */
+    #confetti-canvas {
       position: fixed;
-      inset: 0;
-      z-index: 9999; /* 最前面へ */
-      overflow: hidden;
-    }
-    .petal {
-      position: absolute;
-      top: -10%;
-      width: 12px;
-      height: 18px;
-      border-radius: 9999px;
-      background: rgba(244, 114, 182, 0.9); /* rose-400 */
-      box-shadow: 0 0 10px rgba(244, 114, 182, 0.5);
-      opacity: 0;
-      animation-name: petal-fall;
-      animation-timing-function: linear;
-      animation-fill-mode: forwards;
-    }
-    @keyframes petal-fall {
-      0% {
-        transform: translate3d(0, -10%, 0) rotate(0deg);
-        opacity: 1;
-      }
-      100% {
-        transform: translate3d(0, 110%, 0) rotate(360deg);
-        opacity: 0;
-      }
-    }
-
-    /* スパークアニメーション（素数定理による高速予測の演出） */
-    .spark-layer {
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
       pointer-events: none;
-      position: fixed;
-      inset: 0;
-      z-index: 9998; /* 花びらの次くらいに前面 */
-      overflow: hidden;
-    }
-    .spark-line {
-      position: absolute;
-      left: -30%;
-      height: 2px;
-      /* 視認性アップのため不透明度を上げる */
-      background: linear-gradient(
-        to right,
-        rgba(129, 140, 248, 0),
-        rgba(129, 140, 248, 1),
-        rgba(129, 140, 248, 0)
-      );
-      opacity: 0;
-      animation-name: spark-move;
-      animation-timing-function: linear;
-      animation-fill-mode: forwards;
-      filter: blur(0.5px); /* 光ってる感を出す */
-    }
-    @keyframes spark-move {
-      0% {
-        transform: translateX(0%);
-        opacity: 0;
-      }
-      15% {
-        opacity: 1;
-      }
-      100% {
-        transform: translateX(180%);
-        opacity: 0;
-      }
+      z-index: 9999;
     }
   </style>
 </head>
@@ -107,7 +47,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo, useRef } = React;
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
     // ==========================================
     // アイコンコンポーネント
@@ -144,218 +84,187 @@
     );
 
     // ==========================================
-    // 予測値＝カウンター一致時の花びら演出（超強化版）
+    // Canvasパーティクルシステム (洗練されたご褒美演出)
     // ==========================================
-    function PetalBurst({ level, onEnd }) {
-      const [petals, setPetals] = useState([]);
+    const ConfettiCanvas = ({ level }) => {
+      const canvasRef = useRef(null);
+      const particles = useRef([]);
+      const animationId = useRef(null);
 
       useEffect(() => {
         if (!level) return;
 
-        // ★ レベルごとに「やりすぎ気味」の枚数
-        const count =
-          level === "max" ? 320 :      // 3万以上
-          level === "hard" ? 260 :     // 1万〜3万未満
-          level === "medium" ? 200 :   // 5000〜1万未満
-          140;                         // easy（〜1000〜5000）
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-        // ★ 全体がしっかり見えるだけの時間
-        const durationBase =
-          level === "max" ? 8.0 :
-          level === "hard" ? 7.0 :
-          level === "medium" ? 6.0 :
-          5.0;
+        // 設定: レベルによる演出の違い
+        let particleCount = 0;
+        let types = [];
+        let speedMult = 1.0;
+        let spreadType = 'fall'; // fall: 上から, burst: 中央から
 
-        // ★ 落ち始めのばらつき（同時にドバッと＋少しズラす）
-        const delayMax =
-          level === "max" ? 1.2 :
-          level === "hard" ? 1.0 :
-          level === "medium" ? 0.8 :
-          0.6;
+        switch (level) {
+          case 'max': // 30000+: 爆発的
+            particleCount = 400;
+            types = ['petal', 'square', 'gold', 'sparkle'];
+            speedMult = 1.5;
+            spreadType = 'burst';
+            break;
+          case 'hard': // 10000+: 豪華
+            particleCount = 200;
+            types = ['petal', 'square', 'gold'];
+            speedMult = 1.2;
+            spreadType = 'fall';
+            break;
+          case 'medium': // 5000+: カラフル
+            particleCount = 100;
+            types = ['petal', 'square'];
+            speedMult = 1.0;
+            spreadType = 'fall';
+            break;
+          case 'easy': // ~5000: ピンクの花弁のみ
+          default:
+            particleCount = 60;
+            types = ['petal'];
+            speedMult = 0.8;
+            spreadType = 'fall';
+            break;
+        }
 
-        // ★ 画面でちゃんと見えるサイズ帯
-        const sizeBase =
-          level === "max" ? 28 :
-          level === "hard" ? 24 :
-          level === "medium" ? 22 :
-          20;
+        // パーティクル生成
+        const colors = ['#f472b6', '#38bdf8', '#a3e635', '#facc15', '#c084fc'];
+        
+        for (let i = 0; i < particleCount; i++) {
+          const type = types[Math.floor(Math.random() * types.length)];
+          
+          let x, y, vx, vy;
+          if (spreadType === 'burst') {
+            x = canvas.width / 2;
+            y = canvas.height / 2;
+            const angle = Math.random() * Math.PI * 2;
+            const velocity = 5 + Math.random() * 15 * speedMult;
+            vx = Math.cos(angle) * velocity;
+            vy = Math.sin(angle) * velocity;
+          } else {
+            x = Math.random() * canvas.width;
+            y = -Math.random() * canvas.height * 0.5; // 画面外上部から
+            vx = (Math.random() - 0.5) * 2;
+            vy = (2 + Math.random() * 4) * speedMult;
+          }
 
-        const generated = Array.from({ length: count }).map((_, i) => {
-          const startX = Math.random() * 100; // 0〜100vw
-          const duration = durationBase + Math.random() * 2;
-          const delay = Math.random() * delayMax;
-          const size = sizeBase + Math.random() * 8;
+          particles.current.push({
+            x, y, vx, vy,
+            type,
+            size: 5 + Math.random() * 8 + (level === 'max' ? 5 : 0),
+            color: type === 'petal' ? '#f472b6' : (type === 'gold' ? '#fbbf24' : colors[Math.floor(Math.random() * colors.length)]),
+            rotation: Math.random() * 360,
+            rotationSpeed: (Math.random() - 0.5) * 5,
+            opacity: 1,
+            drag: spreadType === 'burst' ? 0.95 : 0.99, // バースト時は空気抵抗強め
+            gravity: 0.15
+          });
+        }
 
-          return { id: i, startX, duration, delay, size };
-        });
+        const render = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          let activeParticles = 0;
 
-        setPetals(generated);
+          particles.current.forEach(p => {
+            if (p.opacity <= 0) return;
+            activeParticles++;
 
-        const maxT = Math.max(...generated.map(p => p.duration + p.delay));
-        const timer = setTimeout(() => {
-          if (onEnd) onEnd();
-        }, (maxT + 0.5) * 1000);
+            // 物理更新
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += p.gravity;
+            p.vx *= p.drag;
+            p.vy *= p.drag;
+            p.rotation += p.rotationSpeed;
+            p.opacity -= 0.003; // 徐々に消える
 
-        return () => clearTimeout(timer);
-      }, [level, onEnd]);
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate((p.rotation * Math.PI) / 180);
+            ctx.globalAlpha = p.opacity;
+            ctx.fillStyle = p.color;
+
+            // 描画
+            if (p.type === 'petal') {
+              // 花弁の形（楕円っぽく）
+              ctx.beginPath();
+              ctx.ellipse(0, 0, p.size / 2, p.size, 0, 0, Math.PI * 2);
+              ctx.fill();
+            } else if (p.type === 'gold' || p.type === 'sparkle') {
+              // キラキラ（菱形）
+              ctx.beginPath();
+              ctx.moveTo(0, -p.size);
+              ctx.lineTo(p.size / 2, 0);
+              ctx.lineTo(0, p.size);
+              ctx.lineTo(-p.size / 2, 0);
+              ctx.closePath();
+              ctx.fill();
+            } else {
+              // 四角（紙吹雪）
+              ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+            }
+            
+            ctx.restore();
+          });
+
+          if (activeParticles > 0) {
+            animationId.current = requestAnimationFrame(render);
+          }
+        };
+
+        render();
+
+        return () => {
+          if (animationId.current) cancelAnimationFrame(animationId.current);
+        };
+      }, [level]);
 
       if (!level) return null;
-
-      return (
-        <div className="petal-layer">
-          {petals.map(p => (
-            <div
-              key={p.id}
-              className="petal"
-              style={{
-                left: `${p.startX}vw`,
-                animationDuration: `${p.duration}s`,
-                animationDelay: `${p.delay}s`,
-                width: `${p.size}px`,
-                height: `${p.size * 1.4}px`
-              }}
-            />
-          ))}
-        </div>
-      );
-    }
+      return <canvas id="confetti-canvas" ref={canvasRef} />;
+    };
 
     // ==========================================
-    // 素数定理による高速予測のスパーク演出（超強化版）
-    // （frontierモードなど「理論だけで先に形を見る」とき用）
+    // PG_δ / UWP に基づく Σ1 証明エンジン
     // ==========================================
-    function SpeedSpark({ active, mode, onEnd }) {
-      const [lines, setLines] = useState([]);
-
-      useEffect(() => {
-        if (!active) return;
-
-        // ★ 本数をかなり増やす
-        const count = mode === "frontier" ? 40 : 28;
-
-        // ★ 画面にしっかり残る時間
-        const durationBase = mode === "frontier" ? 2.0 : 2.2;
-
-        const generated = Array.from({ length: count }).map((_, i) => {
-          const top = 25 + Math.random() * 35; // 画面のど真ん中〜やや上下
-          const delay =
-            mode === "frontier" ? Math.random() * 0.7 : Math.random() * 0.9;
-          const duration = durationBase + Math.random() * 0.8;
-          const thickness = mode === "frontier" ? 8 + Math.random() * 3 : 6;
-
-          return {
-            id: i,
-            top,
-            delay,
-            duration,
-            thickness
-          };
-        });
-
-        setLines(generated);
-
-        const maxT = Math.max(
-          ...generated.map((p) => p.duration + p.delay)
-        );
-        const timer = setTimeout(() => {
-          if (onEnd) onEnd();
-        }, (maxT + 0.5) * 1000);
-
-        return () => clearTimeout(timer);
-      }, [active, mode, onEnd]);
-
-      if (!active) return null;
-
-      return (
-        <div className="spark-layer">
-          {lines.map((p) => (
-            <div
-              key={p.id}
-              className="spark-line"
-              style={{
-                top: `${p.top}vh`,
-                animationDuration: `${p.duration}s`,
-                animationDelay: `${p.delay}s`,
-                height: `${p.thickness}px`
-              }}
-            />
-          ))}
-        </div>
-      );
-    }
-
-    // ==========================================
-    // PG_δ / UWP に基づく Σ1 証明エンジン（素数判定OSコア）
-    // ==========================================
-
     const CERT_PARAMS = {
-      beta: 0.51,          
-      Z_min: 0.42,         
-
-      c_WG: 0.010,         
-      c_zero_fin: 0.020,   
-      c_zero_tail: 0.015,  
-      c_tail: 0.018,       
-      c_win: 0.012,        
-
-      m_hat: 0.50,
-      H0: BigInt("10000000000000000"), 
-      sourceId: "PG_delta_demo_v1"
+      beta: 0.51, Z_min: 0.42, c_WG: 0.010, c_zero_fin: 0.020,
+      c_zero_tail: 0.015, c_tail: 0.018, c_win: 0.012, m_hat: 0.50,
+      H0: BigInt("10000000000000000"), sourceId: "PG_delta_demo_v1"
     };
 
     function computeDeltaPos(params) {
-      const errorSum =
-        params.c_WG +
-        params.c_zero_fin +
-        params.c_zero_tail +
-        params.c_tail +
-        params.c_win;
-
+      const errorSum = params.c_WG + params.c_zero_fin + params.c_zero_tail + params.c_tail + params.c_win;
       const mainTerm = params.beta * params.Z_min;
       const rawMargin = mainTerm - errorSum;
       const isPositive = rawMargin > 0;
       const deltaPos = isPositive ? params.m_hat * rawMargin : 0;
-
-      return {
-        errorSum,     
-        mainTerm,     
-        margin: rawMargin,
-        deltaPos,     
-        isPositive,
-        theoremMax: params.H0 
-      };
+      return { errorSum, mainTerm, margin: rawMargin, deltaPos, isPositive, theoremMax: params.H0 };
     }
 
     // ==========================================
     // Σ1 ログ生成（数学者向けビュー）
     // ==========================================
-
     function buildSigma1Log(params, deltaInfo) {
       const logs = [];
       logs.push({ label: "METHODOLOGY", val: "Explicit Formula (PG_δ / UWP)", note: "Method", highlight: true });
       logs.push({ label: "THEOREM H₀", val: `≤ ${params.H0.toString()}`, note: "Range with δ_pos>0", highlight: true });
       logs.push({ label: "TARGET H₀", val: "≈ 1.0E+16", note: "Planned Verification", highlight: false });
       logs.push({ type: "sep" });
-
-      logs.push({ label: "WG Bound", val: `≤ ${params.c_WG}`, note: "Explicit WG Error" });
-      logs.push({ label: "Σ Finite Zeros", val: `≤ ${params.c_zero_fin}`, note: "Finite zero sum" });
-      logs.push({ label: "Zero Tail Err", val: `≤ ${params.c_zero_tail}`, note: "Tail over zeros" });
-      logs.push({ label: "Prime Tail Err", val: `≤ ${params.c_tail}`, note: "Prime sum tail" });
-      logs.push({ label: "Smoothing Err", val: `≤ ${params.c_win}`, note: "Window / smoothing" });
-
       const errorSum = deltaInfo.errorSum;
-      logs.push({ type: "sep" });
       logs.push({ label: "Total Error (ε)", val: errorSum.toPrecision(6), note: "ε_total = Σ c_i" });
-      logs.push({ label: "Main Term (β·Z_min)", val: deltaInfo.mainTerm.toPrecision(6), note: "β · Z_min" });
       logs.push({ label: "Safety Margin", val: deltaInfo.margin.toPrecision(6), note: "β·Z_min − ε_total", highlight: true });
-
-      logs.push({ label: "m_hat(Δ)", val: CERT_PARAMS.m_hat.toPrecision(4), note: "Window positivity" });
       logs.push({ label: "δ_pos lower bound", val: deltaInfo.deltaPos.toPrecision(6), note: "m_hat(Δ) · margin", highlight: true });
-
       if (deltaInfo.isPositive) {
         logs.push({ type: "result", msg: `Q.E.D. δ_pos ≥ ${deltaInfo.deltaPos.toPrecision(6)} > 0`, success: true });
       } else {
-        logs.push({ type: "result", msg: "Safety Condition Failed (margin ≤ 0)", success: false });
+        logs.push({ type: "result", msg: "Safety Condition Failed", success: false });
       }
       return logs;
     }
@@ -373,7 +282,6 @@
     // ==========================================
     // 素数判定OS → 可視化OS へのマッピング
     // ==========================================
-
     const SAFE_RANGE_CONFIG = {
       theoremMax: CERT_PARAMS.H0,
       heuristicMax: CERT_PARAMS.H0 * BigInt(100) 
@@ -393,25 +301,15 @@
     function splitRangeIntoZones(minX, maxX, displayMode, cfg = SAFE_RANGE_CONFIG) {
       const segments = [];
       if (maxX < minX) return segments;
-
       const theoremMax = cfg.theoremMax;
       const heurMaxMode = getHeuristicMaxForMode(displayMode, cfg);
-
       const provenEnd = maxX < theoremMax ? maxX : theoremMax;
-      if (minX <= provenEnd) {
-        segments.push({ start: minX, end: provenEnd, zone: "proven" });
-      }
-
+      if (minX <= provenEnd) segments.push({ start: minX, end: provenEnd, zone: "proven" });
       const heuristicStart = minX > theoremMax + BigInt(1) ? minX : theoremMax + BigInt(1);
       const heuristicEnd = maxX < heurMaxMode ? maxX : heurMaxMode;
-      if (heuristicStart <= heuristicEnd && heurMaxMode > theoremMax) {
-        segments.push({ start: heuristicStart, end: heuristicEnd, zone: "heuristic" });
-      }
-
+      if (heuristicStart <= heuristicEnd && heurMaxMode > theoremMax) segments.push({ start: heuristicStart, end: heuristicEnd, zone: "heuristic" });
       const unknownStart = minX > heurMaxMode + BigInt(1) ? minX : heurMaxMode + BigInt(1);
-      if (unknownStart <= maxX) {
-        segments.push({ start: unknownStart, end: maxX, zone: "unknown" });
-      }
+      if (unknownStart <= maxX) segments.push({ start: unknownStart, end: maxX, zone: "unknown" });
       return segments;
     }
 
@@ -428,7 +326,6 @@
       const hasProven = segments.some((s) => s.zone === "proven");
       const hasHeuristic = segments.some((s) => s.zone === "heuristic");
       const hasUnknown = segments.some((s) => s.zone === "unknown");
-
       if (hasProven && !hasHeuristic && !hasUnknown) return { label: "完全証明領域", style: "proven" };
       if (hasProven) return { label: "混合領域 (証明+推定)", style: "mixed" };
       if (hasHeuristic) return { label: "推定領域 (理論値)", style: "heuristic" };
@@ -440,25 +337,17 @@
         const clean = (s) => String(s).replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/,/g, "");
         const minX = BigInt(clean(userMin) || 0);
         const maxX = BigInt(clean(userMax) || 0);
-
         if (maxX < minX) return null;
-
         const deltaInfo = computeDeltaPos(CERT_PARAMS);
         const sigmaLog = buildSigma1Log(CERT_PARAMS, deltaInfo);
         const summary = buildCertificateSummary(CERT_PARAMS, deltaInfo);
-
         let localCfg = SAFE_RANGE_CONFIG;
         if (!deltaInfo.isPositive) {
-          localCfg = {
-            theoremMax: BigInt(0), 
-            heuristicMax: SAFE_RANGE_CONFIG.heuristicMax
-          };
+          localCfg = { theoremMax: BigInt(0), heuristicMax: SAFE_RANGE_CONFIG.heuristicMax };
         }
-
         const segments = splitRangeIntoZones(minX, maxX, displayMode, localCfg);
         const relativeZones = toRelativeSegments(segments, minX, maxX);
         const badge = getHonestyBadge(segments);
-
         return { deltaInfo, sigmaLog, summary, relativeZones, badge };
       } catch (e) {
         return null;
@@ -466,7 +355,7 @@
     }
 
     // ==========================================
-    // 既存の数学エンジン
+    // 数学エンジン
     // ==========================================
     function modPow(base, exp, mod) {
       let res = BigInt(1);
@@ -528,249 +417,107 @@
       try {
         const cleanMin = minStr.replace(/[０-９,]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).replace(/,/g, '');
         const cleanMax = maxStr.replace(/[０-９,]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)).replace(/,/g, '');
-
         if (!/^\d+$/.test(cleanMin) || !/^\d+$/.test(cleanMax)) return { error: "半角数字で入力してください。" };
-
         const min = BigInt(cleanMin);
         const max = BigInt(cleanMax);
-
         if (min < BigInt(0)) return { error: "0以上の数字にしてください。" };
         if (max <= min) return { error: "「ここまで」は「ここから」より大きくしてください。" };
         const LIMIT = BigInt("10000000000000000"); 
-        
         if (max > LIMIT) return { error: "現在は1京（10^16）までの計算に対応しています。" };
         if (max - min > BigInt(50000)) return { error: "一度に計算できる幅は5万個分までです。" };
 
         const realCount = countPrimesRangeBigInt(min, max);
         const naiveCount = Math.max(0, liApprox(max) - liApprox(min));
         const diff = Math.abs(realCount - naiveCount);
-        // 相対誤差(%)
         const errorRate = realCount > 0 ? (diff / realCount) * 100 : 0;
-
         const seedVal = Number((min % BigInt(1000000))) * 1.23 + Number((max % BigInt(100000))) * 0.5;
         const entropy = pseudoRandom(seedVal);
         
         let isSafe = true;
         let reason = "";
-
         if (min > BigInt("9000000000000000") && entropy > 0.3) {
-          isSafe = false;
-          reason = "数が大きすぎて（1京付近）、量子のゆらぎが無視できないレベルに達しています。";
+          isSafe = false; reason = "数が大きすぎて（1京付近）、量子のゆらぎが無視できないレベルに達しています。";
         } else if (entropy > 0.80) {
-          isSafe = false;
-          reason = "この場所では、数字のゆれが予測モデルと一致しません。";
+          isSafe = false; reason = "この場所では、数字のゆれが予測モデルと一致しません。";
         } else if (max - min < BigInt(100) && diff > 5) {
-          isSafe = false;
-          reason = "局所的な偏りが強すぎます。";
+          isSafe = false; reason = "局所的な偏りが強すぎます。";
         }
 
         if (!isSafe) return { success: true, isSafe: false, reason: reason };
         const displayError = Math.max(1, Math.floor(diff * 1.2) + 1);
-        return { 
-          success: true, 
-          isSafe: true, 
-          count: realCount, 
-          naiveCount, // 追加: 理論値
-          diff,       // 追加: 実測との差
-          errorRate,  // 追加: 相対誤差率
-          errorMargin: displayError, 
-          confidenceLevel: "high" 
-        };
+        return { success: true, isSafe: true, count: realCount, naiveCount, diff, errorRate, errorMargin: displayError, confidenceLevel: "high" };
       } catch (e) {
         return { error: "計算できませんでした。" };
       }
     };
 
     // ==========================================
-    // 区間を一つずつ数えて見せるカウンター
-    // （ユーザーが指定した区間に同期）
+    // SlowPrimeCounter (ユーザーが指定した区間に同期)
     // ==========================================
     function SlowPrimeCounter({ minVal, maxVal, runId, onFinish }) {
-      const [state, setState] = React.useState({
-        active: false,
-        start: null,
-        current: null,
-        max: null,
-        count: 0,
-        done: false,
-        total: 0,
-        error: ""
+      const [state, setState] = useState({
+        active: false, start: null, current: null, max: null, count: 0, done: false, total: 0, error: ""
       });
-
       const onFinishRef = useRef(onFinish);
+      useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
+
       useEffect(() => {
-        onFinishRef.current = onFinish;
-      }, [onFinish]);
-
-      // runId が増えたタイミングで、そのときの区間でカウンターをリセットして走らせる
-      React.useEffect(() => {
         if (!runId) return;
-
-        const normalize = (s) =>
-          String(s)
-            .replace(/[０-９,]/g, (c) =>
-              String.fromCharCode(c.charCodeAt(0) - 0xfee0)
-            )
-            .replace(/,/g, "");
-
+        const normalize = (s) => String(s).replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/,/g, "");
         try {
           const cleanMin = normalize(minVal);
           const cleanMax = normalize(maxVal);
-
-          if (!/^\d+$/.test(cleanMin) || !/^\d+$/.test(cleanMax)) {
-            setState({
-              active: false,
-              start: null,
-              current: null,
-              max: null,
-              count: 0,
-              done: false,
-              total: 0,
-              error: "区間が読み取れません。"
-            });
-            return;
-          }
-
+          if (!/^\d+$/.test(cleanMin) || !/^\d+$/.test(cleanMax)) { setState(s=>({...s, active:false, error:"区間エラー"})); return; }
           const minB = BigInt(cleanMin);
           const maxB = BigInt(cleanMax);
-
-          if (maxB <= minB) {
-            setState({
-              active: false,
-              start: null,
-              current: null,
-              max: null,
-              count: 0,
-              done: false,
-              total: 0,
-              error: "「ここから」と「ここまで」の大小関係がおかしいです。"
-            });
-            return;
-          }
-
-          const WIDTH_LIMIT = BigInt(50000);
-          if (maxB - minB > WIDTH_LIMIT) {
-            setState({
-              active: false,
-              start: null,
-              current: null,
-              max: null,
-              count: 0,
-              done: false,
-              total: 0,
-              error: "ここでは幅5万以内の範囲だけを、1つずつ数えて見せています。"
-            });
-            return;
-          }
-
-          const total = Number(maxB - minB + BigInt(1));
-
-          setState({
-            active: true,
-            start: minB,
-            current: minB,
-            max: maxB,
-            count: 0,
-            done: false,
-            total,
-            error: ""
-          });
-        } catch (e) {
-          setState({
-            active: false,
-            start: null,
-            current: null,
-            max: null,
-            count: 0,
-            done: false,
-            total: 0,
-            error: "区間をうまく読み取れませんでした。"
-          });
-        }
+          if (maxB <= minB) { setState(s=>({...s, active:false, error:"大小関係エラー"})); return; }
+          if (maxB - minB > BigInt(50000)) { setState(s=>({...s, active:false, error:"幅制限オーバー"})); return; }
+          setState({ active: true, start: minB, current: minB, max: maxB, count: 0, done: false, total: Number(maxB - minB + BigInt(1)), error: "" });
+        } catch (e) { setState(s=>({...s, active:false, error:"エラー"})); }
       }, [runId, minVal, maxVal]);
 
-      // 1つずつ素数判定して進めるループ
-      React.useEffect(() => {
+      useEffect(() => {
         if (!state.active) return;
-
         const id = setInterval(() => {
           setState((s) => {
             if (!s.active || s.current === null || s.max === null) return s;
-
-            // カウント終了
-            if (s.current > s.max) {
-              return { ...s, active: false, done: true };
-            }
-
+            if (s.current > s.max) { return { ...s, active: false, done: true }; }
             const n = s.current;
             const prime = isPrimeBigInt(n);
-            return {
-              ...s,
-              current: n + BigInt(1),
-              count: s.count + (prime ? 1 : 0)
-            };
+            return { ...s, current: n + BigInt(1), count: s.count + (prime ? 1 : 0) };
           });
-        }, 1); // 1msごとに変更して超高速化
-
+        }, 1); // 超高速化
         return () => clearInterval(id);
       }, [state.active]);
 
-      // 完了通知用エフェクト
-      React.useEffect(() => {
+      useEffect(() => {
         if (state.done && onFinishRef.current) {
            onFinishRef.current(state.count);
         }
       }, [state.done, state.count]); 
 
-      const progress = React.useMemo(() => {
+      const progress = useMemo(() => {
         if (!state.start || state.total <= 0) return 0;
         const limit = state.max ? state.max + BigInt(1) : state.start;
-        const at =
-          state.current && state.current <= limit ? state.current : limit;
-        const done = at - state.start; // BigInt
+        const at = state.current && state.current <= limit ? state.current : limit;
+        const done = at - state.start;
         return Math.min(100, (Number(done) / state.total) * 100);
       }, [state.start, state.current, state.max, state.total]);
 
       return (
         <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-8">
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">
-            ひとつずつ数えて確かめる
-          </h3>
-          <p className="text-xs text-slate-500 text-center mb-4">
-            さっき指定した区間で、素数を1つずつチェックしていく様子です。
-          </p>
-
-          {state.error ? (
-            <p className="text-xs text-red-500 text-center">{state.error}</p>
-          ) : (
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">ひとつずつ数えて確かめる</h3>
+          <p className="text-xs text-slate-500 text-center mb-4">さっき指定した区間で、素数を1つずつチェックしていく様子です。</p>
+          {state.error ? <p className="text-xs text-red-500 text-center">{state.error}</p> : (
             <>
               <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden mb-3">
-                <div
-                  className="h-2 bg-slate-400 transition-all"
-                  style={{ width: `${progress}%` }}
-                />
+                <div className="h-2 bg-slate-400 transition-all" style={{ width: `${progress}%` }} />
               </div>
               <div className="flex justify-between text-xs text-slate-500 mb-1">
-                <span>
-                  いま見ている数：
-                  <span className="font-mono text-slate-800 ml-1">
-                    {state.current ? state.current.toString() : "-"}
-                  </span>
-                </span>
-                <span>
-                  見つかった素数：
-                  <span className="font-mono text-emerald-600 ml-1">
-                    {state.count}
-                  </span>
-                </span>
+                <span>いま見ている数：<span className="font-mono text-slate-800 ml-1">{state.current ? state.current.toString() : "-"}</span></span>
+                <span>見つかった素数：<span className="font-mono text-emerald-600 ml-1">{state.count}</span></span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-2 text-center">
-                {state.done
-                  ? "この範囲の素数をすべて数え終わりました。"
-                  : state.active
-                  ? "1つ1つチェックしながら進んでいます。"
-                  : "計算の準備をしています。"}
-              </p>
+              <p className="text-[11px] text-slate-400 mt-2 text-center">{state.done ? "この範囲の素数をすべて数え終わりました。" : state.active ? "1つ1つチェックしながら進んでいます。" : "計算の準備をしています。"}</p>
             </>
           )}
         </div>
@@ -791,156 +538,90 @@
       const [runId, setRunId] = useState(0); 
       const [frontierMode, setFrontierMode] = useState(false);
       
-      // ★ 予測値＝カウンター一致時の花びらレベル（easy / medium / hard）
-      const [petalLevel, setPetalLevel] = useState(null);
-
-      // ★ 素数定理による高速予測のスパーク演出モード
-      const [sparkMode, setSparkMode] = useState(null); // 'frontier' など
-
-      // ★ 共有用コピー状態
+      const [confettiLevel, setConfettiLevel] = useState(null); // Canvas演出用レベル
       const [copied, setCopied] = useState(false);
 
-      // ★ このデモを紹介するときの一文
-      const shareText =
-        "素数の数を“自信があるときだけ”教えてくれる計算機『GhostDrift 素数計算OS』のデモ。危ない場所ではちゃんと黙るように設計されています。";
-
+      const shareText = "素数の数を“自信があるときだけ”教えてくれる計算機『GhostDrift 素数計算OS』のデモ。危ない場所ではちゃんと黙るように設計されています。";
       const handleCopyShare = () => {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(shareText).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          });
+          navigator.clipboard.writeText(shareText).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
         }
       };
 
-      const monitorState = useMemo(() => {
-        return buildProofMonitorState(minVal, maxVal, displayMode);
-      }, [minVal, maxVal, displayMode]);
-
+      const monitorState = useMemo(() => buildProofMonitorState(minVal, maxVal, displayMode), [minVal, maxVal, displayMode]);
       const safetyLevel = useMemo(() => {
         if (!monitorState || !monitorState.summary) return 0;
-        // δ_pos が大きいほどバーを伸ばす（上限100%）
         return Math.max(10, Math.min(100, monitorState.summary.deltaPos * 50000));
       }, [monitorState]);
 
       useEffect(() => { handleCalculate(true); }, []);
 
+      const resetStateForNewCalculation = () => {
+        setResult(null); 
+        setErrorMsg(""); 
+        setConfettiLevel(null); // 新しい計算の時は演出リセット
+      };
+
       const handlePreset = (type) => {
+        resetStateForNewCalculation();
         switch (type) {
-          case 'safe':
-            setMinVal("1000000");
-            setMaxVal("1001000");
-            setFrontierMode(false);
-            break;
-          case 'medium':
-            setMinVal("1000000000000");
-            setMaxVal("1000000001000");
-            setFrontierMode(false);
-            break;
-          case 'danger':
-            setMinVal("5000000000000000");
-            setMaxVal("5000000000001000");
-            setFrontierMode(false);
-            break;
-          case 'untrustworthy':
-            setMinVal("9900000000000000");
-            setMaxVal("9900000000001000");
-            setFrontierMode(false);
-            break;
-          case 'frontier':
-            setMinVal("1000000000000");           // 10^12
-            setMaxVal("1000001000000");           // 10^12 + 100万
-            setFrontierMode(true);                // 理論モードON
-            break;
+          case 'safe': setMinVal("1000000"); setMaxVal("1001000"); setFrontierMode(false); break;
+          case 'medium': setMinVal("1000000000000"); setMaxVal("1000000001000"); setFrontierMode(false); break;
+          case 'danger': setMinVal("5000000000000000"); setMaxVal("5000000000001000"); setFrontierMode(false); break;
+          case 'untrustworthy': setMinVal("9900000000000000"); setMaxVal("9900000000001000"); setFrontierMode(false); break;
+          case 'frontier': setMinVal("1000000000000"); setMaxVal("1000001000000"); setFrontierMode(true); break;
         }
-        setResult(null); setErrorMsg("");
       };
 
       const handleCalculate = (isInitial = false) => {
-        setErrorMsg(""); setLoading(true);
+        if (!isInitial) {
+          setResult(null); 
+          setErrorMsg(""); 
+          setConfettiLevel(null); // 計算開始時に演出を消す
+        }
+        setLoading(true);
         setTimeout(() => {
-          // ★ frontier 専用：安全ゾーン理論だけでざっくり答える
           if (frontierMode && !isInitial) {
-            const normalize = (s) =>
-              String(s)
-                .replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
-                .replace(/,/g, "");
+            const normalize = (s) => String(s).replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/,/g, "");
             const minB = BigInt(normalize(minVal));
             const maxB = BigInt(normalize(maxVal));
-
-            const approxCount = Math.max(0, liApprox(maxB) - liApprox(minB));   // 理論的なおおよその個数
-            const errorMargin = Math.max(1000, Math.floor(approxCount * 0.1));  // ゆるめの誤差表示
-
-            setResult({
-              success: true,
-              isSafe: true,
-              frontier: true,
-              count: approxCount,
-              errorMargin,
-              confidenceLevel: "theory"
-            });
-
-            // ★ 素数定理による高速予測のスパーク演出
-            setSparkMode("frontier");
-
-            // カウンターは走らせない（runId 更新しない）
+            const approxCount = Math.max(0, liApprox(maxB) - liApprox(minB));
+            const errorMargin = Math.max(1000, Math.floor(approxCount * 0.1));
+            setResult({ success: true, isSafe: true, frontier: true, count: approxCount, errorMargin, confidenceLevel: "theory" });
+            // frontierモードは即座には演出しない（カウンターが無いので、結果表示のみ）
             setLoading(false);
             return;
           }
-
           const res = performCalculation(minVal, maxVal);
           if (res.error) { setErrorMsg(res.error); setResult(null); } 
-          else { 
-            setResult(res); 
-            // ★ このタイミングで runId を進める → SlowPrimeCounter がこの区間で走る
-            setRunId((id) => id + 1);
-          }
+          else { setResult(res); setRunId((id) => id + 1); }
           setLoading(false);
         }, isInitial ? 300 : 700);
       };
 
-      // ★ カウンターが数え終わったときに呼ばれる
+      // カウンター完了時に呼ばれる（演出トリガー）
       const handleCounterFinish = (manualCount) => {
         if (!result || !result.success || !result.isSafe) return;
-
         try {
-          const predicted =
-            typeof result.count === "bigint"
-              ? result.count
-              : BigInt(result.count);
-          const manual =
-            typeof manualCount === "bigint"
-              ? manualCount
-              : BigInt(manualCount);
-
-          // 予測値と実際のカウンターが一致したときだけ花びら
+          const predicted = typeof result.count === "bigint" ? result.count : BigInt(result.count);
+          const manual = typeof manualCount === "bigint" ? manualCount : BigInt(manualCount);
+          
+          // ★ 一致した時だけ発動（スパーク誤爆防止）
           if (predicted !== manual) return;
 
-          // 区間の長さでざっくり難易度を決める
-          const normalize = (s) =>
-            String(s)
-              .replace(/[０-９,]/g, (c) =>
-                String.fromCharCode(c.charCodeAt(0) - 0xFEE0)
-              )
-              .replace(/,/g, "");
+          const normalize = (s) => String(s).replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/,/g, "");
           const minB = BigInt(normalize(minVal));
           const maxB = BigInt(normalize(maxVal));
           const width = maxB - minB;
 
-          // ★ 1000 / 5000 / 10000 / 30000 くらいを意識した4段階
-          let level = "easy";     // 〜約5000
-          if (width >= BigInt(30000)) {
-            level = "max";        // 3万以上
-          } else if (width >= BigInt(10000)) {
-            level = "hard";       // 1万〜3万未満
-          } else if (width >= BigInt(5000)) {
-            level = "medium";     // 5000〜1万未満
-          }
+          // ★ 難易度による明確なレベル分け
+          let level = "easy";
+          if (width >= BigInt(30000)) level = "max";
+          else if (width >= BigInt(10000)) level = "hard";
+          else if (width >= BigInt(5000)) level = "medium";
 
-          setPetalLevel(level);
-        } catch (e) {
-          // 演出用なので、ここでの失敗はアプリ本体には影響させない
-        }
+          setConfettiLevel(level);
+        } catch (e) {}
       };
 
       const fmt = (val) => val.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -948,106 +629,57 @@
       return (
         <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-20 selection:bg-emerald-100">
           
-          {/* 予測値＝カウンター一致時の花びら演出（正確性のご褒美） */}
-          {petalLevel && (
-            <PetalBurst
-              level={petalLevel}
-              onEnd={() => setPetalLevel(null)}
-            />
-          )}
-
-          {/* 素数定理による高速予測のスパーク演出（速さのご褒美） */}
-          {sparkMode && (
-            <SpeedSpark
-              active={!!sparkMode}
-              mode={sparkMode}
-              onEnd={() => setSparkMode(null)}
-            />
-          )}
+          {/* Canvas演出レイヤー */}
+          {confettiLevel && <ConfettiCanvas level={confettiLevel} />}
            
-          {/* シンプルヘッダー（中学生向け） */}
+          {/* ヘッダー */}
           <div className="max-w-3xl mx-auto px-4 py-8 md:py-12">
             <header className="text-center mb-10">
               <div className="inline-flex items-center justify-center p-3 bg-emerald-100 rounded-full mb-4 text-emerald-700">
                 <Shield className="w-8 h-8" />
               </div>
-              <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">
-                素数計算OS
-              </h1>
-
-              {/* メインコピーを元に戻し、人類未踏級の補足を追加 */}
+              <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">素数計算OS</h1>
               <p className="text-lg text-slate-600 max-w-xl mx-auto leading-relaxed mb-2">
-                世界に素数が何個あるか、<br />
-                <span className="font-bold text-emerald-600">“自信があるときだけ”</span> 答える計算機です。
+                世界に素数が何個あるか、<br /><span className="font-bold text-emerald-600">“自信があるときだけ”</span> 答える計算機です。
               </p>
               <p className="text-sm md:text-base text-slate-500 max-w-xl mx-auto leading-relaxed">
                 人類未踏級の巨大区間のごく一部を、理論予測と照らし合わせて覗けます。
               </p>
-
-              <p className="text-xs text-slate-400 mt-2 font-mono">
-                対応範囲: 0 〜 10,000,000,000,000,000 (1京)
-              </p>
+              <p className="text-xs text-slate-400 mt-2 font-mono">対応範囲: 0 〜 10,000,000,000,000,000 (1京)</p>
             </header>
 
-            {/* 操作エリア（親しみやすい白ベース） */}
+            {/* 操作エリア */}
             <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 mb-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div>
                   <label className="block text-sm font-bold text-slate-500 mb-2">ここから</label>
                   <input type="text" inputMode="numeric" value={minVal} 
                     onChange={(e) => { setMinVal(e.target.value); setFrontierMode(false); }} 
-                    className="w-full text-lg p-4 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none transition-colors font-mono"
-                    placeholder="1000000" />
+                    className="w-full text-lg p-4 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none transition-colors font-mono" placeholder="1000000" />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-500 mb-2">ここまで</label>
                   <input type="text" inputMode="numeric" value={maxVal} 
                     onChange={(e) => { setMaxVal(e.target.value); setFrontierMode(false); }} 
-                    className="w-full text-lg p-4 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none transition-colors font-mono"
-                    placeholder="1001000" />
+                    className="w-full text-lg p-4 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-emerald-400 focus:outline-none transition-colors font-mono" placeholder="1001000" />
                 </div>
               </div>
                
               <div className="mb-8">
                 <p className="text-xs font-bold text-slate-400 text-center mb-3 uppercase tracking-wider">まずは試してみる</p>
-                {/* ボタンを元の5つに戻す（500億削除） */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  <button onClick={() => handlePreset('safe')} className="p-3 text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-medium transition-colors border border-emerald-200">
-                    100万付近<br/>(よゆう)
-                  </button>
-                  <button onClick={() => handlePreset('medium')} className="p-3 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-medium transition-colors border border-blue-200">
-                    1兆付近<br/>(ふつう)
-                  </button>
-                  <button onClick={() => handlePreset('danger')} className="p-3 text-sm bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-lg font-medium transition-colors border border-orange-200">
-                    5000兆付近<br/>(がんばる)
-                  </button>
-                  <button onClick={() => handlePreset('untrustworthy')} className="p-3 text-sm bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-medium transition-colors border border-red-200">
-                    約1京<br/>(全力)
-                  </button>
-                  {/* ★ 固定サンプル */}
-                  <button
-                    onClick={() => handlePreset('frontier')}
-                    className="p-3 text-sm bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-lg font-medium transition-colors border border-violet-200"
-                  >
-                    人類未踏級<br/>(固定サンプル)
-                  </button>
+                  <button onClick={() => handlePreset('safe')} className="p-3 text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-medium transition-colors border border-emerald-200">100万付近<br/>(よゆう)</button>
+                  <button onClick={() => handlePreset('medium')} className="p-3 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-medium transition-colors border border-blue-200">1兆付近<br/>(ふつう)</button>
+                  <button onClick={() => handlePreset('danger')} className="p-3 text-sm bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-lg font-medium transition-colors border border-orange-200">5000兆付近<br/>(がんばる)</button>
+                  <button onClick={() => handlePreset('untrustworthy')} className="p-3 text-sm bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-medium transition-colors border border-red-200">約1京<br/>(全力)</button>
+                  <button onClick={() => handlePreset('frontier')} className="p-3 text-sm bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-lg font-medium transition-colors border border-violet-200">人類未踏級<br/>(固定サンプル)</button>
                 </div>
-
-                <p className="mt-3 text-[11px] text-slate-400 text-center">
-                  危ないと判断した区間では、カウンターを動かさない設計です。
-                </p>
+                <p className="mt-3 text-[11px] text-slate-400 text-center">危ないと判断した区間では、カウンターを動かさない設計です。</p>
               </div>
 
-              {errorMsg && (
-                <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-center text-sm font-medium flex items-center justify-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  {errorMsg}
-                </div>
-              )}
+              {errorMsg && <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-center text-sm font-medium flex items-center justify-center gap-2"><AlertTriangle className="w-4 h-4" />{errorMsg}</div>}
 
-              <button onClick={() => handleCalculate(false)} disabled={loading}
-                className={`w-full py-4 rounded-xl text-lg font-bold text-white shadow-lg shadow-emerald-200 transform transition-all active:scale-[0.98] flex items-center justify-center gap-2
-                  ${loading ? 'bg-slate-400 cursor-wait' : 'bg-emerald-500 hover:bg-emerald-600 hover:shadow-xl'}`}>
+              <button onClick={() => handleCalculate(false)} disabled={loading} className={`w-full py-4 rounded-xl text-lg font-bold text-white shadow-lg shadow-emerald-200 transform transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${loading ? 'bg-slate-400 cursor-wait' : 'bg-emerald-500 hover:bg-emerald-600 hover:shadow-xl'}`}>
                 {loading ? <span>計算しています...</span> : <><Calculator className="w-5 h-5" /> 素数の数をだしてみる</>}
               </button>
             </section>
@@ -1056,7 +688,7 @@
             {result && (
               <div className={`transform transition-all duration-500 ${loading ? 'opacity-50 scale-95' : 'opacity-100 scale-100'}`}>
                 
-                {/* ★ 人類未踏級バッジ */}
+                {/* 人類未踏級バッジ */}
                 {result.frontier && (
                   <div className="mb-4">
                     <div className="flex justify-center">
@@ -1065,9 +697,6 @@
                         人類未踏級の巨大区間です（10¹²〜10¹²+100万級）
                       </span>
                     </div>
-                    <p className="mt-2 text-[11px] text-slate-500 text-center max-w-md mx-auto leading-relaxed">
-                      ※ 横切る光は「理論だけで一瞬で形をつかんだ」イメージです。
-                    </p>
                   </div>
                 )}
 
@@ -1075,110 +704,57 @@
                   // 緑
                   <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-xl p-8 text-center text-white mb-8 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-2 bg-emerald-300 opacity-30"></div>
-                    <div className="flex justify-center mb-4">
-                      <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-                        <CheckCircle className="w-8 h-8 text-white" />
-                      </div>
-                    </div>
+                    <div className="flex justify-center mb-4"><div className="bg-white/20 p-3 rounded-full backdrop-blur-sm"><CheckCircle className="w-8 h-8 text-white" /></div></div>
                     <h2 className="text-xl md:text-2xl font-bold mb-6 opacity-90">この場所なら自信を持って答えられます。</h2>
-                    <div className="text-4xl md:text-6xl font-bold mb-2 tracking-tighter">
-                      たぶん <span className="border-b-4 border-emerald-300/50 pb-1">{fmt(result.count)}</span> 個
-                    </div>
+                    <div className="text-4xl md:text-6xl font-bold mb-2 tracking-tighter">たぶん <span className="border-b-4 border-emerald-300/50 pb-1">{fmt(result.count)}</span> 個</div>
                     <div className="text-xl md:text-2xl font-medium opacity-80 mb-8">前後です。</div>
                     
-                    {/* ★ 安全度メーター（δ_pos のライト表示） */}
+                    {/* 安全度メーター */}
                     {monitorState && monitorState.summary && (
                       <div className="mt-2 mb-4">
                         <div className="text-xs opacity-80 mb-1">安全度メーター</div>
-                        <div className="w-full h-2 rounded-full bg-white/20 overflow-hidden">
-                          <div
-                            className="h-2 bg-emerald-300"
-                            style={{ width: `${safetyLevel}%` }}
-                          />
-                        </div>
-                        <div className="text-[11px] opacity-75 mt-1">
-                          δ_pos にもとづいて、この区間はかなり安全なゾーンだと判断されています。
-                        </div>
+                        <div className="w-full h-2 rounded-full bg-white/20 overflow-hidden"><div className="h-2 bg-emerald-300" style={{ width: `${safetyLevel}%` }} /></div>
+                        <div className="text-[11px] opacity-75 mt-1">δ_pos にもとづいて、この区間はかなり安全なゾーンだと判断されています。</div>
                       </div>
                     )}
 
-                    {/* ★ 素数定理誤差率などのコンパクト表示 */}
+                    {/* ローカル指標 */}
                     {typeof result.naiveCount !== "undefined" && (
                       <div className="mt-4 flex flex-wrap justify-center gap-3 text-xs opacity-90">
-                        <div className="bg-black/20 rounded px-3 py-1.5 backdrop-blur-sm">
-                          素朴な素数定理(Li)とのズレ: <span className="font-mono font-bold">{fmt(result.diff)}</span>個
-                        </div>
-                        <div className="bg-black/20 rounded px-3 py-1.5 backdrop-blur-sm">
-                          相対誤差: <span className="font-mono font-bold">{result.errorRate.toFixed(4)}%</span>
-                        </div>
+                        <div className="bg-black/20 rounded px-3 py-1.5 backdrop-blur-sm">素朴な素数定理(Li)とのズレ: <span className="font-mono font-bold">{fmt(result.diff)}</span>個</div>
+                        <div className="bg-black/20 rounded px-3 py-1.5 backdrop-blur-sm">相対誤差: <span className="font-mono font-bold">{result.errorRate.toFixed(4)}%</span></div>
                       </div>
                     )}
-
-                    <p className="text-sm opacity-70 max-w-lg mx-auto leading-relaxed border-t border-white/10 pt-4 mt-4">
-                      じっくり調べたうえで、<br/>ウソをつかずに言える範囲です。
-                    </p>
+                    <p className="text-sm opacity-70 max-w-lg mx-auto leading-relaxed border-t border-white/10 pt-4 mt-4">じっくり調べたうえで、<br/>ウソをつかずに言える範囲です。</p>
                   </div>
                 ) : (
                   // 赤
                   <div className="bg-gradient-to-br from-rose-500 to-red-600 rounded-2xl shadow-xl p-8 text-center text-white mb-8 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-2 bg-rose-300 opacity-30"></div>
-                    <div className="flex justify-center mb-4">
-                      <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-                        <ShieldAlert className="w-8 h-8 text-white" />
-                      </div>
-                    </div>
+                    <div className="flex justify-center mb-4"><div className="bg-white/20 p-3 rounded-full backdrop-blur-sm"><ShieldAlert className="w-8 h-8 text-white" /></div></div>
                     <h2 className="text-2xl md:text-3xl font-bold mb-6">ここではあえて黙ります。</h2>
                     <div className="bg-black/20 rounded-xl p-6 md:p-8 mb-6 backdrop-blur-sm border border-white/10 mx-auto max-w-lg">
-                      <p className="text-xl font-bold leading-relaxed">
-                        このあたりの素数の数については、<br/>自信がないので答えません。
-                      </p>
+                      <p className="text-xl font-bold leading-relaxed">このあたりの素数の数については、<br/>自信がないので答えません。</p>
                     </div>
-                    <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-lg text-sm font-medium text-rose-100">
-                      <Info className="w-4 h-4" />
-                      理由：{result.reason}
-                    </div>
+                    <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-lg text-sm font-medium text-rose-100"><Info className="w-4 h-4" />理由：{result.reason}</div>
                   </div>
                 )}
 
-                {/* ★ 共有用一文＋コピー */}
+                {/* 共有 */}
                 <div className="bg-slate-100 rounded-xl p-4 mb-6 flex flex-col md:flex-row items-stretch gap-3">
                   <div className="flex-1">
-                    <p className="text-xs font-bold text-slate-500 mb-1">
-                      このデモをそのまま紹介できる一文
-                    </p>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      素数の数を
-                      <span className="font-semibold">
-                        “自信があるときだけ”
-                      </span>
-                      教えてくれる計算機「GhostDrift 素数計算OS」のデモ。
-                      <br />
-                      危ない場所ではちゃんと黙るように設計されています。
-                    </p>
+                    <p className="text-xs font-bold text-slate-500 mb-1">このデモをそのまま紹介できる一文</p>
+                    <p className="text-xs text-slate-600 leading-relaxed">素数の数を<span className="font-semibold">“自信があるときだけ”</span>教えてくれる計算機「GhostDrift 素数計算OS」のデモ。<br />危ない場所ではちゃんと黙るように設計されています。</p>
                   </div>
                   <div className="flex items-center md:items-end">
-                    <button
-                      onClick={handleCopyShare}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-900 transition-colors flex items-center gap-1"
-                    >
-                      <Calculator className="w-3 h-3" />
-                      {copied ? "コピーしました" : "紹介文をコピー"}
-                    </button>
+                    <button onClick={handleCopyShare} className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-900 transition-colors flex items-center gap-1"><Calculator className="w-3 h-3" />{copied ? "コピーしました" : "紹介文をコピー"}</button>
                   </div>
                 </div>
 
-                {/* ★ 追加：1つずつ数えるカウンター（スマホで縦並び） */}
-                {/* frontierModeの時は数えない */}
-                {!frontierMode && (
-                  <SlowPrimeCounter 
-                    minVal={minVal} 
-                    maxVal={maxVal} 
-                    runId={runId} 
-                    onFinish={handleCounterFinish} 
-                  />
-                )}
+                {/* カウンター */}
+                {!frontierMode && <SlowPrimeCounter minVal={minVal} maxVal={maxVal} runId={runId} onFinish={handleCounterFinish} />}
 
-                {/* 比較エリア */}
+                {/* 比較 */}
                 <div className="bg-white rounded-xl border border-slate-200 p-6 mb-12">
                   <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 text-center">ふつうの計算とのちがい</h3>
                   <div className="flex flex-col md:flex-row gap-4 items-stretch">
@@ -1187,223 +763,80 @@
                       <div className="font-bold mb-1 text-slate-700">ふつうの計算</div>
                       <p>どんな場所でも、とりあえず数字を出します。<br/><span className="text-xs text-slate-400">（合ってるかどうかは分かりません）</span></p>
                     </div>
-                    <div className="hidden md:flex items-center justify-center text-slate-300">
-                      <ArrowRight className="w-5 h-5" />
-                    </div>
+                    <div className="hidden md:flex items-center justify-center text-slate-300"><ArrowRight className="w-5 h-5" /></div>
                     <div className="flex-1 bg-blue-50 rounded-lg p-4 text-sm text-blue-800 relative overflow-hidden">
                       <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
                       <div className="font-bold mb-1 text-blue-900">このアプリ</div>
                       <p>“ここは危ない”と感じた場所では、自分から黙ります。<br/><span className="text-xs text-blue-400">（ウソをつくくらいなら答えない）</span></p>
-                      {/* ★ 従来法では不可能だった点 */}
-                      <p className="mt-2 text-[11px] font-semibold text-blue-900">
-                        この OS が扱う巨大な区間は、昔のやり方では「理論上の予測」しかできなかった領域です。
-                      </p>
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* フッター＆隠し証明モニター */}
+            {/* フッター＆隠しモニター */}
             <div className="border-t border-slate-200 pt-8">
-               
-              <button 
-                onClick={() => setShowMonitor(!showMonitor)}
-                className="w-full text-center text-slate-500 hover:text-emerald-600 text-sm font-medium flex items-center justify-center gap-2 transition-colors mb-4"
-              >
+              <button onClick={() => setShowMonitor(!showMonitor)} className="w-full text-center text-slate-500 hover:text-emerald-600 text-sm font-medium flex items-center justify-center gap-2 transition-colors mb-4">
                 {showMonitor ? <ChevronUp className="w-4 h-4"/> : <Lock className="w-4 h-4" />}
                 {showMonitor ? "専門的な詳細を閉じる" : "専門的な詳細（証明モニター）を開く"}
               </button>
-
-              {/* ★ 追加: 数理背景デモへのボタン */}
               <div className="mt-2 mb-4 flex justify-center">
-                <a
-                  href="https://ghostdrifttheory.github.io/Prime-Calculation-OS-Mathematical-Lab/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-300 bg-white text-[11px] text-slate-600 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  素数計算OSの数理背景デモ（素数重力）を開く
+                <a href="https://ghostdrifttheory.github.io/Prime-Calculation-OS-Mathematical-Lab/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-300 bg-white text-[11px] text-slate-600 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />素数計算OSの数理背景デモ（素数重力）を開く
                 </a>
               </div>
 
-              {/* 証明モニター（ここだけ黒背景のガチ仕様） */}
               {showMonitor && monitorState && (
                 <div className="transition-all duration-300">
                   <section className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl text-slate-200 mb-8">
-                    {/* ヘッダー */}
                     <div className="bg-black px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-                      <h2 className="text-sm font-bold text-emerald-400 flex items-center gap-2">
-                        <Activity className="w-4 h-4" />
-                        CERTIFICATE MONITOR
-                      </h2>
+                      <h2 className="text-sm font-bold text-emerald-400 flex items-center gap-2"><Activity className="w-4 h-4" />CERTIFICATE MONITOR</h2>
                       <div className="text-[10px] font-mono text-slate-500">GD-OS Kernel v1.0.4</div>
                     </div>
-
                     <div className="p-6">
-                      {/* バッジ表示 */}
-                      <div className="flex justify-end mb-4">
-                          <div className={`px-2 py-1 rounded text-xs font-mono border 
-                           ${monitorState.badge.style === 'proven' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800' : 
-                             monitorState.badge.style === 'heuristic' ? 'bg-indigo-900/30 text-indigo-400 border-indigo-800' : 
-                             'bg-slate-800 text-slate-400 border-slate-700'}`}>
-                            STATUS: {monitorState.badge.label}
-                          </div>
-                      </div>
-
-                      {/* スライダーエリア */}
+                      <div className="flex justify-end mb-4"><div className={`px-2 py-1 rounded text-xs font-mono border ${monitorState.badge.style === 'proven' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800' : monitorState.badge.style === 'heuristic' ? 'bg-indigo-900/30 text-indigo-400 border-indigo-800' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>STATUS: {monitorState.badge.label}</div></div>
                       <div className="mb-8">
-                        <div className="flex justify-between items-end mb-2">
-                          <label className="text-xs font-bold text-slate-500">安全強度設定 (BOUNDARY)</label>
-                          <span className="text-xs font-mono text-emerald-400">
-                            {displayMode === 'careful' ? '慎重 (Careful)' : displayMode === 'standard' ? '標準 (Standard)' : '挑戦 (Challenge)'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="flex-1 relative h-2 bg-slate-800 rounded-full">
-                            <input type="range" min="0" max="2" step="1" 
-                              value={displayMode === 'careful' ? 0 : displayMode === 'standard' ? 1 : 2}
-                              onChange={(e) => setDisplayMode(['careful', 'standard', 'challenge'][e.target.value])}
-                              className="absolute w-full h-full opacity-0 cursor-pointer z-10" />
-                            <div className={`absolute h-full rounded-full transition-all duration-300
-                              ${displayMode === 'careful' ? 'w-1/3 bg-emerald-600' : 
-                                displayMode === 'standard' ? 'w-2/3 bg-blue-600' : 'w-full bg-orange-600'}`}></div>
-                            <div className="absolute w-4 h-4 bg-white rounded-full shadow top-1/2 -translate-y-1/2 transition-all duration-300"
-                              style={{ left: displayMode === 'careful' ? '16%' : displayMode === 'standard' ? '50%' : '84%' }}></div>
-                          </div>
-                        </div>
-                        <div className="flex justify-between text-[10px] text-slate-600 mt-1 font-mono">
-                          <span>慎重</span>
-                          <span>標準</span>
-                          <span>挑戦</span>
-                        </div>
+                        <div className="flex justify-between items-end mb-2"><label className="text-xs font-bold text-slate-500">安全強度設定 (BOUNDARY)</label><span className="text-xs font-mono text-emerald-400">{displayMode === 'careful' ? '慎重 (Careful)' : displayMode === 'standard' ? '標準 (Standard)' : '挑戦 (Challenge)'}</span></div>
+                        <div className="flex items-center gap-4"><div className="flex-1 relative h-2 bg-slate-800 rounded-full"><input type="range" min="0" max="2" step="1" value={displayMode === 'careful' ? 0 : displayMode === 'standard' ? 1 : 2} onChange={(e) => setDisplayMode(['careful', 'standard', 'challenge'][e.target.value])} className="absolute w-full h-full opacity-0 cursor-pointer z-10" /><div className={`absolute h-full rounded-full transition-all duration-300 ${displayMode === 'careful' ? 'w-1/3 bg-emerald-600' : displayMode === 'standard' ? 'w-2/3 bg-blue-600' : 'w-full bg-orange-600'}`}></div><div className="absolute w-4 h-4 bg-white rounded-full shadow top-1/2 -translate-y-1/2 transition-all duration-300" style={{ left: displayMode === 'careful' ? '16%' : displayMode === 'standard' ? '50%' : '84%' }}></div></div></div>
+                        <div className="flex justify-between text-[10px] text-slate-600 mt-1 font-mono"><span>慎重</span><span>標準</span><span>挑戦</span></div>
                       </div>
-
-                      {/* 安全域バー */}
                       <div className="mb-6">
                         <div className="text-xs font-bold text-slate-500 mb-2">カバレッジ解析 (COVERAGE ANALYSIS)</div>
-                        <div className="h-4 w-full flex rounded-sm overflow-hidden bg-slate-800 border border-slate-700">
-                          {monitorState.relativeZones.map((z, i) => (
-                            <div key={i} style={{ width: `${z.width}%` }} 
-                              className={`h-full transition-all duration-500 
-                                ${z.zone === 'proven' ? 'bg-emerald-500' : 
-                                  z.zone === 'heuristic' ? 'bg-blue-500' : 'bg-slate-700'}`} />
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap gap-4 mt-3">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                            <span className="text-[10px] text-slate-400">証明済 (Verified)</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                            <span className="text-[10px] text-slate-400">推論 (Heuristic)</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-slate-700"></div>
-                            <span className="text-[10px] text-slate-500">未検証 (Unknown)</span>
-                          </div>
-                        </div>
-                        {/* ★ H0 の説明 */}
-                        <p className="mt-2 text-[10px] text-slate-500">
-                          H₀ = 10¹⁶ までは、「安全ゾーンとして証明済み」の範囲として扱っています。
-                        </p>
+                        <div className="h-4 w-full flex rounded-sm overflow-hidden bg-slate-800 border border-slate-700">{monitorState.relativeZones.map((z, i) => (<div key={i} style={{ width: `${z.width}%` }} className={`h-full transition-all duration-500 ${z.zone === 'proven' ? 'bg-emerald-500' : z.zone === 'heuristic' ? 'bg-blue-500' : 'bg-slate-700'}`} />))}</div>
+                        <div className="flex flex-wrap gap-4 mt-3"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-[10px] text-slate-400">証明済 (Verified)</span></div><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[10px] text-slate-400">推論 (Heuristic)</span></div><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-slate-700"></div><span className="text-[10px] text-slate-500">未検証 (Unknown)</span></div></div>
+                        <p className="mt-2 text-[10px] text-slate-500">H₀ = 10¹⁶ までは、「安全ゾーンとして証明済み」の範囲として扱っています。</p>
                       </div>
-
-                      {/* Σ1ログ & サマリー */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* メトリクス */}
                         <div className="bg-black/50 rounded-lg p-4 border border-slate-800">
                           <div className="text-xs font-bold text-slate-500 mb-3 border-b border-slate-900 pb-2">主要指標 (CORE METRICS)</div>
                           <div className="space-y-3">
-                            <div className="flex justify-between items-center">
-                              <span className="text-xs text-slate-400">WG 上界</span>
-                              <span className="text-xs font-mono text-indigo-300">{monitorState.summary.wgBound}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-xs text-slate-400">Positive Margin</span>
-                              <span className="text-xs font-mono text-emerald-300">
-                                δ ≥ {monitorState.summary.deltaPos.toPrecision(4)}
-                              </span>
-                            </div>
+                            <div className="flex justify-between items-center"><span className="text-xs text-slate-400">WG 上界</span><span className="text-xs font-mono text-indigo-300">{monitorState.summary.wgBound}</span></div>
+                            <div className="flex justify-between items-center"><span className="text-xs text-slate-400">Positive Margin</span><span className="text-xs font-mono text-emerald-300">δ ≥ {monitorState.summary.deltaPos.toPrecision(4)}</span></div>
                           </div>
-                           
-                          {/* 数学者向け専門的注釈（理系高校3年〜向け） */}
                           <div className="mt-4 pt-3 border-t border-slate-900 text-[9px] text-slate-500 leading-relaxed font-mono">
-                            <p className="mb-2 font-bold text-slate-400">
-                              ※ 本 OS はリーマン予想・GRH・zero-density 仮定等の未証明の仮定を一切必要としません。
-                            </p>
-                            <p className="mb-2">
-                              このモニターは、「このあたりに素数がどのくらい詰まっているか」を表すグラフ Z(u) が、ある範囲で絶対に 0 より下がらないかどうかをチェックするための画面です。
-                            </p>
-                            <ul className="mb-2 pl-2 space-y-1">
-                              <li>・β·Z_min …… Z(u) の一番低いところの “安全な下限”</li>
-                              <li>・ε_total …… いろいろな近似で生じる誤差を全部足した “上限”</li>
-                              <li>・m_hat(Δ) … 窓関数が必ず正になることを表す定数</li>
-                            </ul>
-                            <p className="mb-2">
-                              ここでは、次の 1 本の不等式だけを見ています：
-                              <br/>
-                              &nbsp;&nbsp;δ_pos ≥ m_hat(Δ)·(β·Z_min − ε_total)
-                            </p>
-                            <p className="mb-2">
-                              β·Z_min − ε_total が 0 より大きい ＝「主役（β·Z_min）が、誤差（ε_total）より必ず大きい」ので、平均的な素数の濃さはどこでも “正のまま” 保たれます。その結果、ある高さ H₀ までは、「長いあいだ素数が 1 個も出ない区間は起こらない」とまとめて保証できます。
-                            </p>
-                            <p className="mb-2">
-                              H₀ や β, Z_min, 各誤差 c_i はすべて、有限個の零点表・素数表と積分の上界から計算した “あらかじめ固定された数表” になっていて、このモニターはその不等式を実際に計算して OK かどうかを表示しているだけです。
-                            </p>
-                            <p>
-                              （おまけ）背景では、リーマン ζ 関数の −ζ'/ζ(s) から Z(u) を作っており、ここはその結果だけを使う「OS側のチェック層」になっています。
-                            </p>
+                            <p className="mb-2 font-bold text-slate-400">※ 本 OS はリーマン予想・GRH・zero-density 仮定等の未証明の仮定を一切必要としません。</p>
+                            <p className="mb-2">このモニターは、「このあたりに素数がどのくらい詰まっているか」を表すグラフ Z(u) が、ある範囲で絶対に 0 より下がらないかどうかをチェックするための画面です。</p>
+                            <ul className="mb-2 pl-2 space-y-1"><li>・β·Z_min …… Z(u) の一番低いところの “安全な下限”</li><li>・ε_total …… いろいろな近似で生じる誤差を全部足した “上限”</li><li>・m_hat(Δ) … 窓関数が必ず正になることを表す定数</li></ul>
+                            <p className="mb-2">ここでは、次の 1 本の不等式だけを見ています：<br/>&nbsp;&nbsp;δ_pos ≥ m_hat(Δ)·(β·Z_min − ε_total)</p>
+                            <p className="mb-2">β·Z_min − ε_total が 0 より大きい ＝「主役（β·Z_min）が、誤差（ε_total）より必ず大きい」ので、平均的な素数の濃さはどこでも “正のまま” 保たれます。その結果、ある高さ H₀ までは、「長いあいだ素数が 1 個も出ない区間は起こらない」とまとめて保証できます。</p>
+                            <p className="mb-2">H₀ や β, Z_min, 各誤差 c_i はすべて、有限個の零点表・素数表と積分の上界から計算した “あらかじめ固定された数表” になっていて、このモニターはその不等式を実際に計算して OK かどうかを表示しているだけです。</p>
+                            <p>（おまけ）背景では、リーマン ζ 関数の −ζ'/ζ(s) から Z(u) を作っており、ここはその結果だけを使う「OS側のチェック層」になっています。</p>
                           </div>
                         </div>
-
-                        {/* ログストリーム */}
                         <div className="bg-black/50 rounded-lg p-4 border border-slate-800 max-h-40 overflow-y-auto math-log">
                           <div className="text-xs font-bold text-slate-500 mb-2 sticky top-0 bg-slate-950/90 pb-2 border-b border-slate-900">Σ₁ ログ出力 (LOG STREAM)</div>
-                          <div className="space-y-1 font-mono text-[10px]">
-                            {monitorState.sigmaLog.map((log, i) => {
-                              if (log.type === 'sep') return <div key={i} className="h-px bg-slate-800 my-2"></div>;
-                              if (log.type === 'result') return (
-                                <div key={i} className={`mt-2 p-1.5 rounded border ${log.success ? 'bg-emerald-900/20 border-emerald-900 text-emerald-400' : 'bg-rose-900/20 border-rose-900 text-rose-400'}`}>
-                                  {log.msg}
-                                </div>
-                              );
-                              return (
-                                <div key={i} className={`flex justify-between ${log.highlight ? 'text-emerald-300 font-bold' : 'text-slate-400'}`}>
-                                  <span>{log.label}</span>
-                                  <span>{log.val}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
+                          <div className="space-y-1 font-mono text-[10px]">{monitorState.sigmaLog.map((log, i) => { if (log.type === 'sep') return <div key={i} className="h-px bg-slate-800 my-2"></div>; if (log.type === 'result') return (<div key={i} className={`mt-2 p-1.5 rounded border ${log.success ? 'bg-emerald-900/20 border-emerald-900 text-emerald-400' : 'bg-rose-900/20 border-rose-900 text-rose-400'}`}>{log.msg}</div>); return (<div key={i} className={`flex justify-between ${log.highlight ? 'text-emerald-300 font-bold' : 'text-slate-400'}`}><span>{log.label}</span><span>{log.val}</span></div>); })}</div>
                         </div>
                       </div>
-                       
-                      {/* 【誠実化対応】独立性の注釈 */}
-                      <div className="mt-4 text-[10px] text-slate-500 text-right leading-tight">
-                        ※ 上の「自信がないので黙ります」は局所的なヒューリスティック判定であり、<br/>
-                        δ_pos の Σ₁証明とは独立に動いています。
-                      </div>
-
+                      <div className="mt-4 text-[10px] text-slate-500 text-right leading-tight">※ 上の「自信がないので黙ります」は局所的なヒューリスティック判定であり、<br/>δ_pos の Σ₁証明とは独立に動いています。</div>
                     </div>
                   </section>
                 </div>
               )}
-
-              {/* 一般向け説明 */}
-              <div className="bg-slate-50 rounded-xl p-6 text-sm text-slate-600 leading-relaxed">
-                <p className="font-bold text-slate-700">
-                  この OS は「危ないところでは黙る」方向を選ぶ設計です。
-                </p>
-              </div>
-
+              <div className="bg-slate-50 rounded-xl p-6 text-sm text-slate-600 leading-relaxed"><p className="font-bold text-slate-700">この OS は「危ないところでは黙る」方向を選ぶ設計です。</p></div>
             </div>
           </div>
-          <p className="text-xs text-slate-400 text-center pb-8">
-            特願2025-202403号 GhostDrift 素数計算OS デモ
-          </p>
+          <p className="text-xs text-slate-400 text-center pb-8">特願2025-202403号 GhostDrift 素数計算OS デモ</p>
         </div>
       );
     }
