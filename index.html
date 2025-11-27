@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>素数計算OS (GhostDrift Kernel)</title>
+  <title>素数計算OS</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <!-- デザイン用（Tailwind） -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -695,10 +695,6 @@
           {/* ヘッダー */}
           <div className="max-w-3xl mx-auto px-4 py-8 md:py-12">
             <header className="text-center mb-10">
-              <div className="inline-flex items-center justify-center px-4 py-2 bg-emerald-100 rounded-full mb-4 text-emerald-700 gap-2">
-                <Shield className="w-6 h-6" />
-                <span className="text-xs font-semibold tracking-wide">GhostDrift 素数OSカーネル</span>
-              </div>
               <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">素数計算OS</h1>
               <p className="text-lg text-slate-600 max-w-xl mx-auto leading-relaxed mb-2">
                 世界に素数が何個あるか、<br /><span className="font-bold text-emerald-600">“自信があるときだけ”</span> 答える計算機です。
@@ -776,7 +772,7 @@
                   <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-xl p-8 text-center text-white mb-8 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-2 bg-emerald-300 opacity-30"></div>
                     <div className="flex justify-center mb-4"><div className="bg-white/20 p-3 rounded-full backdrop-blur-sm"><CheckCircle className="w-8 h-8 text-white" /></div></div>
-                    <h2 className="text-xl md:text-2xl font-bold mb-6 opacity-90">この場所なら自信を持って答えられます。</h2>
+                    <h2 className="text-xl md:text-2xl font-bold mb-6 opacity-90">自信を持って答えます！</h2>
                     <div className="text-4xl md:text-6xl font-bold mb-8 tracking-tighter"><span className="border-b-4 border-emerald-300/50 pb-1">{fmt(result.count)}</span> 個</div>
                     
                     {/* 安全度メーター */}
@@ -814,7 +810,7 @@
                     </div>
 
                     <p className="text-sm opacity-70 max-w-lg mx-auto leading-relaxed border-t border-white/10 pt-4 mt-4">
-                      世界の見積もりに効くサイズだけ保証します。
+                      ADIC(証明モニター)により100%保証します。
                     </p>
                   </div>
                 ) : (
