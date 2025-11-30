@@ -781,33 +781,61 @@
                       </div>
                     )}
 
-                    {/* 性能指標ブロック */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-left">
-                      {/* 正確性 */}
-                      {typeof result.naiveCount !== "undefined" && (
-                        <div className="bg-black/20 rounded-lg p-3 backdrop-blur-sm">
-                          <div className="font-bold text-emerald-100 border-b border-emerald-400/30 pb-1 mb-2">正確性</div>
-                          <div className="flex justify-between mb-1"><span>理論値とのズレ</span><span className="font-mono font-bold">{fmt(result.diff)}</span></div>
-                          <div className="flex justify-between"><span>相対誤差</span><span className="font-mono font-bold">{result.errorRate.toFixed(4)}%</span></div>
-                        </div>
-                      )}
-                      {/* 速度 */}
-                      {costMetrics && (
-                        <div className="bg-emerald-900/40 rounded-lg p-3 backdrop-blur-sm">
-                          <div className="font-bold text-emerald-100 border-b border-emerald-400/30 pb-1 mb-2">速度</div>
-                          <div className="flex justify-between mb-1"><span>従来法</span><span className="font-mono">{fmt(costMetrics.naiveSteps)}回</span></div>
-                          <div className="flex justify-between"><span>本OS</span><span className="font-mono font-bold">約{fmt(costMetrics.osSteps)}回</span></div>
-                          {costMetrics.speedup > 1 && (
-                            <div className="mt-1 pt-1 border-t border-emerald-400/20 text-emerald-200 text-right">
-                              従来法より <span className="font-bold text-emerald-100">約{fmt(costMetrics.speedup)}倍</span> 軽く済みます。
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                   {/* 性能指標ブロック */}
+<div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-left">
+  {/* 従来理論とのズレ（正確性） */}
+  {typeof result.naiveCount !== "undefined" && (
+    <div className="bg-black/20 rounded-lg p-3 backdrop-blur-sm">
+      <div className="font-bold text-emerald-100 border-b border-emerald-400/30 pb-1 mb-2">
+        従来理論とのズレ
+      </div>
+      <div className="flex justify-between mb-1">
+        <span>ズレ</span>
+        <span className="font-mono font-bold">{fmt(result.diff)}</span>
+      </div>
+      <div className="flex justify-between">
+        <span>ズレ率</span>
+        <span className="font-mono font-bold">
+          {result.errorRate.toFixed(4)}%
+        </span>
+      </div>
+      <div className="mt-1 pt-1 border-t border-emerald-400/20 text-[10px] text-emerald-200 text-right">
+        理論値＝従来の近似式（素数定理など）
+      </div>
+    </div>
+  )}
+
+  {/* 計算コスト（速度） */}
+  {costMetrics && (
+    <div className="bg-emerald-900/40 rounded-lg p-3 backdrop-blur-sm">
+      <div className="font-bold text-emerald-100 border-b border-emerald-400/30 pb-1 mb-2">
+        計算コスト
+      </div>
+      <div className="flex justify-between mb-1">
+        <span>従来法</span>
+        <span className="font-mono">{fmt(costMetrics.naiveSteps)}回</span>
+      </div>
+      <div className="flex justify-between">
+        <span>本OS</span>
+        <span className="font-mono font-bold">
+          約{fmt(costMetrics.osSteps)}回
+        </span>
+      </div>
+      {costMetrics.speedup > 1 && (
+        <div className="mt-1 pt-1 border-t border-emerald-400/20 text-emerald-200 text-right text-[10px]">
+          従来法の約
+          <span className="font-bold text-emerald-100">
+            {fmt(costMetrics.speedup)}倍
+          </span>
+          効率的
+        </div>
+      )}
+    </div>
+  )}
+</div>
 
                     <p className="text-sm opacity-70 max-w-lg mx-auto leading-relaxed border-t border-white/10 pt-4 mt-4">
-                      ADIC(証明モニター)により100%保証します。
+                      ADIC(証明モニター)により100%保証。
                     </p>
                   </div>
                 ) : (
@@ -913,4 +941,5 @@
   </script>
 </body>
 </html>
+
 
