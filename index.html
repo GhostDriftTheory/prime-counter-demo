@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 // ==========================================
-// アイコンコンポーネント (提供されたSVG定義)
+// アイコンコンポーネント
 // ==========================================
 const Shield = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
@@ -41,7 +41,7 @@ const Database = ({ className }) => (
 );
 
 // ==========================================
-// Canvasパーティクルシステム (洗練されたご褒美演出)
+// Canvasパーティクルシステム
 // ==========================================
 const ConfettiCanvas = ({ level }) => {
   const canvasRef = useRef(null);
@@ -52,6 +52,7 @@ const ConfettiCanvas = ({ level }) => {
     if (!level) return;
 
     const canvas = canvasRef.current;
+    if (!canvas) return; // 安全策
     const ctx = canvas.getContext('2d');
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -91,6 +92,8 @@ const ConfettiCanvas = ({ level }) => {
 
     const colors = ['#f472b6', '#38bdf8', '#a3e635', '#facc15', '#c084fc'];
     
+    // パーティクル初期化
+    particles.current = [];
     for (let i = 0; i < particleCount; i++) {
       const type = types[Math.floor(Math.random() * types.length)];
       
@@ -123,6 +126,7 @@ const ConfettiCanvas = ({ level }) => {
     }
 
     const render = () => {
+      if (!canvas) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       let activeParticles = 0;
@@ -181,7 +185,7 @@ const ConfettiCanvas = ({ level }) => {
 };
 
 // ==========================================
-// スパークアニメーション（素数定理による高速予測の演出）
+// スパークアニメーション
 // ==========================================
 function SpeedSpark({ active, mode, onEnd }) {
   const [lines, setLines] = useState([]);
@@ -237,7 +241,7 @@ function SpeedSpark({ active, mode, onEnd }) {
 }
 
 // ==========================================
-// PG_δ / UWP に基づく Σ1 証明エンジン
+// 数学ロジック (証明エンジン)
 // ==========================================
 const CERT_PARAMS = {
   beta: 0.51, Z_min: 0.42, c_WG: 0.010, c_zero_fin: 0.020,
@@ -276,9 +280,6 @@ function buildCertificateSummary(params, deltaInfo) {
   return { deltaPos: deltaInfo.deltaPos, wgBound: params.c_WG, isValid: deltaInfo.isPositive, H0: params.H0, sourceId: params.sourceId };
 }
 
-// ==========================================
-// 素数判定OS → 可視化OS へのマッピング
-// ==========================================
 const SAFE_RANGE_CONFIG = { theoremMax: CERT_PARAMS.H0, heuristicMax: CERT_PARAMS.H0 * BigInt(100) };
 
 function getHeuristicMaxForMode(displayMode, cfg) {
@@ -342,7 +343,7 @@ function buildProofMonitorState(userMin, userMax, displayMode) {
 }
 
 // ==========================================
-// 数学エンジン
+// 素数判定ユーティリティ
 // ==========================================
 function modPow(base, exp, mod) {
   let res = BigInt(1); base %= mod;
@@ -428,9 +429,6 @@ const performCalculation = (minStr, maxStr) => {
   }
 };
 
-// ==========================================
-// この区間での「コスト感」をざっくり数値化
-// ==========================================
 function estimateCostForRange(minStr, maxStr, frontierMode) {
   try {
     const normalize = (s) => String(s).replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/,/g, "");
@@ -447,15 +445,20 @@ function estimateCostForRange(minStr, maxStr, frontierMode) {
 }
 
 // ==========================================
-// SlowPrimeCounter (ユーザーが指定した区間に同期)
+// SlowPrimeCounter (最適化済み)
 // ==========================================
 function SlowPrimeCounter({ minVal, maxVal, runId, onFinish }) {
   const [state, setState] = useState({
     active: false, start: null, current: null, max: null, count: 0, done: false, total: 0, error: ""
   });
+  
+  // レンダリング負荷を下げるためのRef
+  const runnerRef = useRef({ current: null, count: 0, max: null, active: false });
   const onFinishRef = useRef(onFinish);
+
   useEffect(() => { onFinishRef.current = onFinish; }, [onFinish]);
 
+  // 初期化エフェクト
   useEffect(() => {
     if (!runId) return;
     const normalize = (s) => String(s).replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/,/g, "");
@@ -467,22 +470,54 @@ function SlowPrimeCounter({ minVal, maxVal, runId, onFinish }) {
       const maxB = BigInt(cleanMax);
       if (maxB <= minB) { setState(s=>({...s, active:false, error:"大小関係エラー"})); return; }
       if (maxB - minB > BigInt(50000)) { setState(s=>({...s, active:false, error:"幅制限オーバー"})); return; }
-      setState({ active: true, start: minB, current: minB, max: maxB, count: 0, done: false, total: Number(maxB - minB + BigInt(1)), error: "" });
+      
+      const newState = { active: true, start: minB, current: minB, max: maxB, count: 0, done: false, total: Number(maxB - minB + BigInt(1)), error: "" };
+      setState(newState);
+      
+      // Refも同期
+      runnerRef.current = { current: minB, count: 0, max: maxB, active: true };
+      
     } catch (e) { setState(s=>({...s, active:false, error:"エラー"})); }
   }, [runId, minVal, maxVal]);
 
+  // 計算ループ (バッチ処理でUIフリーズを回避)
   useEffect(() => {
     if (!state.active) return;
-    const id = setInterval(() => {
-      setState((s) => {
-        if (!s.active || s.current === null || s.max === null) return s;
-        if (s.current > s.max) { return { ...s, active: false, done: true }; }
-        const n = s.current;
-        const prime = isPrimeBigInt(n);
-        return { ...s, current: n + BigInt(1), count: s.count + (prime ? 1 : 0) };
-      });
-    }, 1); // 超高速化
-    return () => clearInterval(id);
+    
+    // 60FPS (約16ms) ごとにUI更新
+    const timer = setInterval(() => {
+       let { current, count, max, active } = runnerRef.current;
+       if (!active || current === null || max === null) return;
+       
+       if (current > max) {
+           clearInterval(timer);
+           setState(prev => ({ ...prev, active: false, done: true }));
+           return;
+       }
+
+       // 1フレームで処理する時間を制限 (約10msだけ計算に使う)
+       const startTime = performance.now();
+       while (performance.now() - startTime < 10 && current <= max) {
+           if (isPrimeBigInt(current)) {
+               count++;
+           }
+           current++;
+       }
+
+       // Ref更新
+       runnerRef.current = { current, count, max, active };
+
+       // React State更新 (描画用)
+       setState(prev => ({
+           ...prev,
+           current: current,
+           count: count,
+           done: current > max
+       }));
+
+    }, 16);
+
+    return () => clearInterval(timer);
   }, [state.active]);
 
   useEffect(() => {
@@ -500,12 +535,10 @@ function SlowPrimeCounter({ minVal, maxVal, runId, onFinish }) {
   }, [state.start, state.current, state.max, state.total]);
 
   return (
-    // デザイン変更: borderを少し濃く、影を追加、左にアクセントライン
     <div className="bg-slate-50/50 rounded-xl border border-slate-300 border-l-4 border-l-slate-500 p-4 mb-8 shadow-sm relative overflow-hidden">
       
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-bold text-slate-700 flex items-center gap-2">
-           {/* ローディングアイコン的なものを回す */}
            <div className={`w-2 h-2 rounded-full ${state.active ? 'bg-emerald-500 animate-ping' : 'bg-slate-400'}`} />
            実測検証：ひとつずつ数えて答え合わせ
         </h3>
@@ -515,7 +548,6 @@ function SlowPrimeCounter({ minVal, maxVal, runId, onFinish }) {
 
       {state.error ? <p className="text-xs text-red-500 text-center">{state.error}</p> : (
         <>
-          {/* プログレスバーを目立たせる */}
           <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden mb-3 border border-slate-300/50">
             <div className={`h-full transition-all duration-75 ${state.done ? 'bg-slate-600' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }} />
           </div>
@@ -554,14 +586,12 @@ export default function PrimeCounterApp() {
   const [runId, setRunId] = useState(0); 
   const [frontierMode, setFrontierMode] = useState(false);
   
-  const [confettiLevel, setConfettiLevel] = useState(null); // Canvas演出用レベル
+  const [confettiLevel, setConfettiLevel] = useState(null); 
   const [sparkMode, setSparkMode] = useState(null); 
   const [copied, setCopied] = useState(false);
 
-  // ★追加：予測と実測が一致したかどうか
   const [matchStatus, setMatchStatus] = useState(null);
 
-  // シェア文言を更新
   const shareText = `巨大区間の素数個数を、推測ではなく“保証つき”で即時に返す新方式のデモです。
 
 危険域には踏み込まず、確実に言える範囲だけ高速に出す──
@@ -571,7 +601,6 @@ export default function PrimeCounterApp() {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(shareText).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
     } else {
-        // Fallback for iframe environments
         const textArea = document.createElement("textarea");
         textArea.value = shareText;
         document.body.appendChild(textArea);
@@ -589,7 +618,6 @@ export default function PrimeCounterApp() {
 
   const monitorState = useMemo(() => buildProofMonitorState(minVal, maxVal, displayMode), [minVal, maxVal, displayMode]);
   
-  // ★ コスト感の計算
   const costMetrics = useMemo(
     () => estimateCostForRange(minVal, maxVal, frontierMode),
     [minVal, maxVal, frontierMode]
@@ -600,8 +628,8 @@ export default function PrimeCounterApp() {
   const resetStateForNewCalculation = () => {
     setResult(null); 
     setErrorMsg(""); 
-    setConfettiLevel(null); // 新しい計算の時は演出リセット
-    setMatchStatus(null);   // ★追加
+    setConfettiLevel(null); 
+    setMatchStatus(null);   
   };
 
   const handlePreset = (type) => {
@@ -620,8 +648,8 @@ export default function PrimeCounterApp() {
     if (!isInitial) {
       setResult(null); 
       setErrorMsg(""); 
-      setConfettiLevel(null); // 計算開始時に演出を消す
-      setMatchStatus(null);   // ★追加
+      setConfettiLevel(null); 
+      setMatchStatus(null);   
     }
     setLoading(true);
     setTimeout(() => {
@@ -633,7 +661,6 @@ export default function PrimeCounterApp() {
         const errorMargin = Math.max(1000, Math.floor(approxCount * 0.1));
         setResult({ success: true, isSafe: true, frontier: true, count: approxCount, errorMargin, confidenceLevel: "theory" });
         
-        // frontierモードは一瞬で予測するので即座に演出レベルを決定
         setSparkMode("frontier");
         
         setLoading(false);
@@ -646,27 +673,24 @@ export default function PrimeCounterApp() {
     }, isInitial ? 300 : 700);
   };
 
-  // カウンター完了時に呼ばれる（演出トリガー）
   const handleCounterFinish = (manualCount) => {
     if (!result || !result.success || !result.isSafe) return;
     try {
       const predicted = typeof result.count === "bigint" ? result.count : BigInt(result.count);
       const manual = typeof manualCount === "bigint" ? manualCount : BigInt(manualCount);
       
-      // ★ここで一致／不一致を反映
       if (predicted !== manual) {
-        setMatchStatus(null);  // まだ一致していない
+        setMatchStatus(null); 
         return;
       }
 
-      setMatchStatus("match"); // ぴったり一致！
+      setMatchStatus("match");
 
       const normalize = (s) => String(s).replace(/[０-９,]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/,/g, "");
       const minB = BigInt(normalize(minVal));
       const maxB = BigInt(normalize(maxVal));
       const width = maxB - minB;
 
-      // ★ 難易度による明確なレベル分け
       let level = "easy";
       if (width >= BigInt(30000)) level = "max";
       else if (width >= BigInt(10000)) level = "hard";
@@ -681,7 +705,6 @@ export default function PrimeCounterApp() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-20 selection:bg-emerald-100">
       
-      {/* 必要なCSSを注入 */}
       <style>{`
         body {
           font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
@@ -734,11 +757,9 @@ export default function PrimeCounterApp() {
         }
       `}</style>
 
-      {/* Canvas演出レイヤー */}
       {confettiLevel && <ConfettiCanvas level={confettiLevel} />}
       {sparkMode && <SpeedSpark active={!!sparkMode} mode={sparkMode} onEnd={() => setSparkMode(null)} />}
         
-      {/* ヘッダー */}
       <div className="max-w-3xl mx-auto px-4 py-8 md:py-12">
         <header className="text-center mb-10">
           <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3 tracking-tight">素数計算OS</h1>
@@ -746,7 +767,6 @@ export default function PrimeCounterApp() {
             世界に素数が何個あるか、<br /><span className="font-bold text-emerald-600">“自信があるときだけ”</span> 答える計算機です。
           </p>
 
-          {/* ★ここを追加（スマホ用に短く） */}
           <p className="text-xs text-slate-500 mt-1 font-bold">
             ゴール：予測値と実測がぴったり一致すること。
           </p>
@@ -754,7 +774,6 @@ export default function PrimeCounterApp() {
           <p className="text-xs text-slate-400 mt-2 font-mono">対応範囲: 0 〜 10,000,000,000,000,000 (1京)</p>
         </header>
 
-        {/* 操作エリア */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div>
@@ -790,18 +809,15 @@ export default function PrimeCounterApp() {
           </button>
         </section>
 
-        {/* OSの約束バッジ */}
         <div className="mt-4 flex flex-wrap justify-center gap-2 text-[11px] mb-8">
           <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700"><Shield className="w-3 h-3" /><span>安全ゾーン以外では黙る</span></div>
           <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-50 text-sky-700"><Zap className="w-3 h-3" /><span>証明を前払いして高速化</span></div>
           <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200"><Database className="w-3 h-3" /><span>1京までのログを扱える設計</span></div>
         </div>
 
-        {/* 結果エリア */}
         {result && (
           <div className={`transform transition-all duration-500 ${loading ? 'opacity-50 scale-95' : 'opacity-100 scale-100'}`}>
             
-            {/* 人類未踏級バッジ */}
             {result.frontier && (
               <div className="mb-4">
                 <div className="flex justify-center">
@@ -817,14 +833,12 @@ export default function PrimeCounterApp() {
             )}
 
             {result.isSafe ? (
-              // 緑
               <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-xl p-8 text-center text-white mb-8 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-2 bg-emerald-300 opacity-30"></div>
                 <div className="flex justify-center mb-4"><div className="bg-white/20 p-3 rounded-full backdrop-blur-sm"><CheckCircle className="w-8 h-8 text-white" /></div></div>
                 <h2 className="text-xl md:text-2xl font-bold mb-4 opacity-90">自信を持って答えます！</h2>
                 <div className="text-4xl md:text-6xl font-bold mb-4 tracking-tighter"><span className="border-b-4 border-emerald-300/50 pb-1">{fmt(result.count)}</span> 個</div>
                 
-                {/* ★ 予測値＝実測 がそろったときだけ、堂々と表示 */}
                 {matchStatus === "match" && (
                   <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/15 text-[13px] font-bold mb-4 animate-bounce">
                     <CheckCircle className="w-4 h-4" />
@@ -832,7 +846,6 @@ export default function PrimeCounterApp() {
                   </div>
                 )}
                 
-                {/* 安全度メーター */}
                 {monitorState && monitorState.summary && (
                   <div className="mt-2 mb-6">
                     <div className="text-xs opacity-80 mb-1">安全度メーター</div>
@@ -841,9 +854,7 @@ export default function PrimeCounterApp() {
                   </div>
                 )}
 
-                {/* 性能指標ブロック */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-left">
-                  {/* 従来理論とのズレ（正確性） */}
                   {typeof result.naiveCount !== "undefined" && (
                     <div className="bg-black/20 rounded-lg p-3 backdrop-blur-sm">
                       <div className="font-bold text-emerald-100 border-b border-emerald-400/30 pb-1 mb-2">
@@ -865,7 +876,6 @@ export default function PrimeCounterApp() {
                     </div>
                   )}
 
-                  {/* 計算コスト（速度） */}
                   {costMetrics && (
                     <div className="bg-emerald-900/40 rounded-lg p-3 backdrop-blur-sm">
                       <div className="font-bold text-emerald-100 border-b border-emerald-400/30 pb-1 mb-2">
@@ -899,7 +909,6 @@ export default function PrimeCounterApp() {
                 </p>
               </div>
             ) : (
-              // 赤
               <div className="bg-gradient-to-br from-rose-500 to-red-600 rounded-2xl shadow-xl p-8 text-center text-white mb-8 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-2 bg-rose-300 opacity-30"></div>
                 <div className="flex justify-center mb-4"><div className="bg-white/20 p-3 rounded-full backdrop-blur-sm"><ShieldAlert className="w-8 h-8 text-white" /></div></div>
@@ -911,10 +920,8 @@ export default function PrimeCounterApp() {
               </div>
             )}
 
-            {/* カウンター (結果直下に移動) */}
             {!frontierMode && <SlowPrimeCounter minVal={minVal} maxVal={maxVal} runId={runId} onFinish={handleCounterFinish} />}
 
-            {/* 共有 */}
             <div className="bg-slate-100 rounded-xl p-4 mb-6 flex flex-col md:flex-row items-stretch gap-3">
               <div className="flex-1">
                 <p className="text-xs font-bold text-slate-500 mb-1">このデモをそのまま紹介できる一文</p>
@@ -924,12 +931,9 @@ export default function PrimeCounterApp() {
                 <button onClick={handleCopyShare} className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-900 transition-colors flex items-center gap-1"><Calculator className="w-3 h-3" />{copied ? "コピーしました" : "紹介文をコピー"}</button>
               </div>
             </div>
-
-            {/* 比較 (削除済み) */}
           </div>
         )}
 
-        {/* フッター＆隠しモニター */}
         <div className="border-t border-slate-200 pt-8">
           <button onClick={() => setShowMonitor(!showMonitor)} className="w-full text-center text-slate-500 hover:text-emerald-600 text-sm font-medium flex items-center justify-center gap-2 transition-colors mb-4">
             {showMonitor ? <ChevronUp className="w-4 h-4"/> : <Lock className="w-4 h-4" />}
